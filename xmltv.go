@@ -5,7 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
-	"main/tmdb"
+	"guide2go/tmdb"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -173,15 +173,12 @@ func getProgram(channel G2GCache) (p []Programme) {
 			pro.EpisodeNums = Cache.GetEpisodeNum(s.ProgramID)
 
 			// Icon
-			a, _ := tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2])
-      if a == "" {
-        a = "a"
-      }
+			imageURL, _ := tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2])
       // TODO: Add here to not add the image if it is empty, maybe using log error
 
 			pro.Icon = []Icon{
 				{
-					Src: "https://image.tmdb.org/t/p/w94_and_h141_bestv2" + a,
+					Src: imageURL,
 				},
 			}
 

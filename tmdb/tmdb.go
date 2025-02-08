@@ -12,6 +12,7 @@ import (
 const (
 	tmdbApiKey = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI1MzRjYWI3MjcxZWZiYzI3YWM3Mzk3YWMyZGJiYTIxNiIsIm5iZiI6MTU3MDQxMjAwMS41NTcsInN1YiI6IjVkOWE5NWUxOTJlNTViMDAxYTQ5Mzk1YSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.TAu9mA6oGOrrdWd8AlIVWTiRaWR-qsWiLypB67w-C8I"
 	tmdbURL    = "https://api.themoviedb.org/3/%s"
+	tmdbImageUrl = "https://image.tmdb.org/t/p/w94_and_h141_bestv2%s"
 )
 
 type Results struct {
@@ -113,7 +114,7 @@ func SearchItem(searchTerm, mediaType string) (string, error) {
 	}
 
 	if cachedURL != "" {
-		return cachedURL, nil // Return cached URL if found
+		return fmt.Sprintf(tmdbImageUrl, cachedURL), nil// Return cached URL if found
 	}
 
 	token := "Bearer " + tmdbApiKey
@@ -163,7 +164,7 @@ func SearchItem(searchTerm, mediaType string) (string, error) {
 		fmt.Println("Error adding to cache:", err) // Log the error, but don't stop execution
 	}
 
-	return posterPath, nil
+	return fmt.Sprintf(tmdbImageUrl, posterPath), nil
 }
 
 func details(showID string) error {

@@ -1,4 +1,4 @@
-module main
+module guide2go
 
 go 1.19
 
