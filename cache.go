@@ -3,10 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"log"
-	"net/http"
 	"os"
 	"sync"
 )
@@ -571,91 +568,6 @@ func (c *cache) GetPreviouslyShown(id string) (prev *PreviouslyShown) {
 
 	if p, ok := c.Program[id]; ok {
 		prev.Start = p.OriginalAirDate
-	}
-
-	return
-}
-
-func GetImageUrl(urlid string, token string, name string) {
-	url := urlid + "?token=" + token
-	filename := Config.Options.ImagesPath + name
-	if a, err := os.Stat(filename); err != nil || a.Size() < 500 {
-		file, _ := os.Create(filename)
-		defer file.Close()
-		req, err := http.Get(url)
-		if err != nil {
-			return
-		}
-		defer req.Body.Close()
-		io.Copy(file, req.Body)
-		info, _ := os.Stat(filename)
-		if info.Size() < 500 {
-			log.Println("Max image limit downloaded --skipping image download")
-			ImageError = true
-			return
-		}
-
-	}
-}
-
-func (c *cache) GetIcon(id string) (i []Icon) {
-
-	var aspects = []string{"2x3", "4x3", "3x4", "16x9"}
-	var uri string
-	var nameFinal string
-	switch Config.Options.PosterAspect {
-
-	case "all":
-		break
-
-	default:
-		aspects = []string{Config.Options.PosterAspect}
-
-	}
-
-	if m, ok := c.Metadata[id]; ok {
-		var nameTemp string
-		for _, aspect := range aspects {
-			var maxWidth, maxHeight int
-			var finalCategory string = ""
-			for _, icon := range m.Data {
-				if finalCategory == "" && (icon.Category == "Poster Art" || icon.Category == "Box Art" || icon.Category == "Banner-L1" || icon.Category == "Banner-L2") {
-					finalCategory = icon.Category
-				} else if finalCategory == "" && icon.Category == "VOD Art" {
-					finalCategory = icon.Category
-				}
-				if icon.Category != finalCategory {
-					continue
-				}
-
-				if icon.URI[0:7] != "http://" && icon.URI[0:8] != "https://" {
-					nameTemp = icon.URI
-					icon.URI = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s", icon.URI)
-				}
-
-				if icon.Aspect == aspect {
-
-					if icon.Width > maxWidth {
-						maxWidth = icon.Width
-						maxHeight = icon.Height
-						uri = icon.URI
-						nameFinal = nameTemp
-					}
-
-				}
-
-			}
-
-			if maxWidth > 0 {
-				if Config.Options.TVShowImages && !ImageError {
-					GetImageUrl(uri, Token, nameFinal)
-				}
-				path := "http://" + Config.Options.Hostname + "/images/" + nameFinal
-				i = append(i, Icon{Src: path, Height: maxHeight, Width: maxWidth})
-			}
-
-		}
-
 	}
 
 	return
