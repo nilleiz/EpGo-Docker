@@ -2,156 +2,173 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sort"
-	"strings"
+
+	"github.com/manifoldco/promptui"
 )
 
 func (e *Entry) manageChannels(sd *SD) (err error) {
 
-	defer func() {
-		Config.Save()
-		Cache.Save()
-	}()
+        defer func() {
+                Config.Save()
+                Cache.Save()
+        }()
 
-	var index, selection int
+        var index, selection int
 
-	var menu Menu
-	var entry Entry
+        var menu Menu
+        var entry Entry
 
-	err = Cache.Open()
-	if err != nil {
-		ShowErr(err)
-		return
-	}
+        err = Cache.Open()
+        if err != nil {
+                ShowErr(err)
+                return
+        }
 
-	Cache.Init()
+        Cache.Init()
 
-	menu.Entry = make(map[int]Entry)
+        menu.Entry = make(map[int]Entry)
 
-	menu.Select = getMsg(0204)
-	menu.Headline = e.Value
+        menu.Select = getMsg(0204)
+        menu.Headline = e.Value
 
-	// Cancel
-	entry.Key = index
-	entry.Value = getMsg(0200)
-	menu.Entry[index] = entry
+        // Cancel
+        entry.Key = index
+        entry.Value = getMsg(0200)
+        menu.Entry[index] = entry
 
-	var ch channel
+        var ch channel
 
-	for _, lineup := range sd.Resp.Status.Lineups {
+        for _, lineup := range sd.Resp.Status.Lineups {
 
-		index++
-		entry.Key = index
-		entry.Value = fmt.Sprintf("%s [%s]", lineup.Name, lineup.Lineup)
-		entry.Lineup = lineup.Lineup
+                index++
+                entry.Key = index
+                entry.Value = fmt.Sprintf("%s [%s]", lineup.Name, lineup.Lineup)
+                entry.Lineup = lineup.Lineup
 
-		menu.Entry[index] = entry
+                menu.Entry[index] = entry
 
-	}
+        }
 
-	selection = menu.Show()
+        selection = menu.Show()
 
-	switch selection {
+        switch selection {
 
-	case 0:
-		return
+        case 0:
+                return
 
-	default:
-		entry = menu.Entry[selection]
-		ch.Lineup = entry.Lineup
+        default:
+                entry = menu.Entry[selection]
+                ch.Lineup = entry.Lineup
 
-	}
+        }
 
-	sd.Req.Parameter = fmt.Sprintf("/%s", entry.Lineup)
-	sd.Req.Type = "GET"
+        sd.Req.Parameter = fmt.Sprintf("/%s", entry.Lineup)
+        sd.Req.Type = "GET"
 
-	err = sd.Lineups()
+        err = sd.Lineups()
 
-	entry.headline()
-	var channelNames []string
-	var existing string
-	var addAll, removeAll bool
+        sd.Req.Parameter = fmt.Sprintf("/%s", entry.Lineup)
+        sd.Req.Type = "GET"
 
-	for _, station := range sd.Resp.Lineup.Stations {
-		channelNames = append(channelNames, station.Name)
-	}
+        err = sd.Lineups()
 
-	sort.Strings(channelNames)
+        entry.headline()
+        var channelNames []string
+        var existing map[string]bool
+        var addThese []channel
+        var removeThese []channel
+		var selectedChannels []string // Keep track of selected channel names
 
-	Config.GetChannels()
+        for _, station := range sd.Resp.Lineup.Stations {
+                channelNames = append(channelNames, station.Name)
+        }
 
-	for _, cName := range channelNames {
+        sort.Strings(channelNames)
 
-		for _, station := range sd.Resp.Lineup.Stations {
+        Config.GetChannels()
 
-			if cName == station.Name {
+        existing = make(map[string]bool)
+        for _, id := range Config.ChannelIDs {
+                existing[id] = true
+        }
 
-				var input string
+        // Prepare items for promptui
+        var promptItems []string
+        for _, cName := range channelNames {
+                for _, station := range sd.Resp.Lineup.Stations {
+                        if cName == station.Name {
+                                status := "-"
+                                if existing[station.StationID] {
+                                        status = "+"
+                                }
+                                promptItems = append(promptItems, fmt.Sprintf("[%s] %s [%s] %v", status, station.Name, station.StationID, station.BroadcastLanguage))
+                                break
+                        }
+                }
+        }
 
-				ch.Name = fmt.Sprintf("%s", station.Name)
-				ch.ID = station.StationID
 
-				if ContainsString(Config.ChannelIDs, station.StationID) != -1 {
-					existing = "+"
-				} else {
-					existing = "-"
-				}
+    prompt := promptui.Select{
+        Label: "Available Channels (Enter to select, Ctrl+C to finish)",
+        Items: promptItems,
+        Size:  20,
+        Templates: &promptui.SelectTemplates{
+            Label:    "{{ . }}",
+            Active:   "> {{ . | green }}",
+            Inactive: "  {{ . }}",
+            Selected: "{{ . | yellow }}", // Show selected items in yellow
+        },
+    }
 
-				if !addAll && !removeAll {
+    for {
+        index, _, err := prompt.Run()
+        if err != nil {
+            if err == promptui.ErrInterrupt {
+                break // User pressed Ctrl+C, exit loop
+            }
+            log.Fatalf("Prompt failed %v\n", err)
+            return err
+        }
 
-					fmt.Println(fmt.Sprintf("[%s] %s [%s] %v", existing, station.Name, station.StationID, station.BroadcastLanguage))
+        selectedCName := channelNames[index]
 
-					fmt.Print("(Y) Add Channel, (N) Skip / Remove Channel, (ALL) Add all other Channels, (NONE) Remove all other channels, (SKIP) Skip all Channels: ")
-					fmt.Scanln(&input)
+        // Check if the channel is already selected. If it is, remove it. If it is not, add it.
+        alreadySelected := false
+                for i, c := range selectedChannels{
+                        if c == selectedCName {
+                                alreadySelected = true
+                                selectedChannels = append(selectedChannels[:i], selectedChannels[i+1:]...)
+                                break
+                        }
+                }
 
-					switch strings.ToLower(input) {
+        for _, station := range sd.Resp.Lineup.Stations {
+            if selectedCName == station.Name {
+                ch := channel{Name: station.Name, ID: station.StationID}
 
-					case "y":
-						if existing == "-" {
-							Config.AddChannel(&ch)
-						}
+                                if alreadySelected {
+                                        removeThese = append(removeThese, ch)
+                                } else {
+                                        addThese = append(addThese, ch)
+                                        selectedChannels = append(selectedChannels, selectedCName)
+                                }
+                break
+            }
+        }
+    }
 
-					case "n":
-						if existing == "+" {
-							Config.RemoveChannel(&ch)
-						}
+        for _, ch := range addThese {
+				ch.Lineup = entry.Lineup
+                Config.AddChannel(&ch)
+        }
 
-					case "all":
-						Config.AddChannel(&ch)
-						addAll = true
+        for _, ch := range removeThese {
+                Config.RemoveChannel(&ch)
+        }
 
-					case "none":
-						Config.RemoveChannel(&ch)
-						removeAll = true
-
-					case "skip":
-						return
-
-					}
-
-				} else {
-
-					if removeAll {
-						if existing == "+" {
-							Config.RemoveChannel(&ch)
-						}
-					}
-
-					if addAll {
-						if existing == "-" {
-							Config.AddChannel(&ch)
-						}
-					}
-
-				}
-
-			}
-
-		}
-
-	}
-
-	return
+        return
 }
 
 func (c *config) AddChannel(ch *channel) {

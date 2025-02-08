@@ -211,7 +211,7 @@ func (c *cache) AddMetadata(gzip *[]byte, wg *sync.WaitGroup) {
 
 			} else {
 				if Config.Options.SDDownloadErrors {
-					ShowErr(fmt.Errorf("Unable to unmarshal the JSON.  Maybe a type compatability error.  %s", saveError.Error()))
+					ShowErr(fmt.Errorf("unable to unmarshal the JSON.  Maybe a type compatability error.  %s", saveError.Error()))
 				}
 			}
 
