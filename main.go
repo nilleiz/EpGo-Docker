@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"log/slog"
 )
 
 // AppName : App name
@@ -16,6 +18,8 @@ const Version = "1.1.3"
 // Config : Config file (struct)
 var Config config
 var Config2 string
+var logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -26,7 +30,7 @@ func main() {
 
 	flag.Parse()
 	Config2 = *config
-	showInfo("G2G", fmt.Sprintf("Version: %s", Version))
+	logger.Info("Guide2Go revamped", "Version", Version, "Forked", "By Chuchodavids")
 
 	if *h {
 		fmt.Println()
@@ -37,7 +41,7 @@ func main() {
 	if len(*configure) != 0 {
 		err := Configure(*configure)
 		if err != nil {
-			ShowErr(err)
+			logger.Error("could not open configuration", "error", err)
 		}
 		os.Exit(0)
 	}
@@ -58,7 +62,7 @@ func main() {
 
 // ShowErr : Show error on screen
 func ShowErr(err error) {
-	var msg = fmt.Sprintf("[ERROR] %s", err)
-	log.Println(msg)
+	var msg = fmt.Sprintf("%s", err)
+	logger.Error(msg)
 
 }

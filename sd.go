@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -23,12 +23,10 @@ func (sd *SD) Init() (err error) {
 		sd.Req.Compression = false
 		sd.Token = ""
 
-		var login = Config.Account
-
-		sd.Req.Data, err = json.MarshalIndent(login, "", "  ")
+		sd.Req.Data, err = json.MarshalIndent(Config.Account, "", "  ")
 		if err != nil {
-			ShowErr(err)
-			return
+			logger.Error("could not marshall request data to get token", "error", err)
+			return err
 		}
 
 		err = sd.Connect()
@@ -36,13 +34,14 @@ func (sd *SD) Init() (err error) {
 
 			if sd.Resp.Login.Code != 0 {
 				// SD Account problem
+				logger.Error("Token request returned a non-200 code", "error", err)
 				return
 			}
 
 			return
 		}
 
-		showInfo("SD", fmt.Sprintf("Login...%s", sd.Resp.Login.Message))
+		logger.Info("ScheduleDirect", "Login", sd.Resp.Login.Message)
 
 		sd.Token = sd.Resp.Login.Token
 		Token = sd.Token
@@ -165,10 +164,11 @@ func (sd *SD) Connect() (err error) {
 
 	var sdStatus SDStatus
 
-	showInfo("URL", sd.Req.URL)
+	logger.Info("ScheduleDirect TOKEN call", "URL", sd.Req.URL)
 
 	req, err := http.NewRequest(sd.Req.Type, sd.Req.URL, bytes.NewBuffer(sd.Req.Data))
 	if err != nil {
+		logger.Error("Could not create request for Token", "error", err)
 		return
 	}
 
@@ -184,14 +184,21 @@ func (sd *SD) Connect() (err error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("failed to get token from Schedules Direct", "error", err)
 		return
 	}
+	logger.Info("SchedulesDirect token retrieved")
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("SchedulesDirect token retrieval returned a non-200 code", "http", resp.Status)
+		return err
+	}
+
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		ShowErr(err)
+		logger.Error("Could not read response body from Schedules direct token retrieval method")
 		return
 	}
 

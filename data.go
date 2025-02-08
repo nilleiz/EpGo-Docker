@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -16,7 +16,8 @@ func (sd *SD) Update(filename string) (err error) {
 
 	Config.File = strings.TrimSuffix(filename, filepath.Ext(filename))
 
-	_, err = ioutil.ReadFile(fmt.Sprintf("%s.yaml", Config.File))
+	// reads the Config file
+	_, err = os.ReadFile(fmt.Sprintf("%s.yaml", Config.File))
 
 	if err != nil {
 		return

@@ -25,7 +25,10 @@ func Configure(filename string) (err error) {
 		return
 	}
 
-	sd.Init()
+	err = sd.Init()
+	if err != nil {
+		return err
+	}
 
 	if len(Config.Account.Username) != 0 || len(Config.Account.Password) != 0 {
 		sd.Login()
@@ -117,7 +120,7 @@ func Configure(filename string) (err error) {
 
 func (c *config) Open() (err error) {
 
-	data, err := ioutil.ReadFile(fmt.Sprintf("%s.yaml", c.File))
+	data, err := os.ReadFile(fmt.Sprintf("%s.yaml", c.File))
 	var rmCacheFile, newOptions bool
 
 	if err != nil {
@@ -165,37 +168,6 @@ func (c *config) Open() (err error) {
 
 		showInfo("G2G", fmt.Sprintf("%s (rating) [%s]", getMsg(0300), Config.File))
 
-	}
-	// Download Images from TV Shows
-	if !bytes.Contains(data, []byte("Local Images Cache:")) {
-
-		newOptions = true
-
-		Config.Options.TVShowImages = false
-
-		showInfo("G2G", fmt.Sprintf("%s (Local Images Cache) [%s]", getMsg(401), Config.File))
-
-	}
-
-	// Download Images from TV Shows
-	if !bytes.Contains(data, []byte("Images Path:")) {
-
-		newOptions = true
-
-		Config.Options.ImagesPath = "${images_path}"
-		showInfo("G2G", fmt.Sprintf("%s (TVShows images Path) [%s]", getMsg(403), Config.File))
-
-	}
-	// Proxy scheduledirect images url
-	if !bytes.Contains(data, []byte("Proxy Images")) {
-		newOptions = true
-		Config.Options.ProxyImages = false
-	}
-
-	// Hostname
-	if !bytes.Contains(data, []byte("Hostname")) {
-		newOptions = true
-		Config.Options.Hostname = "localhost:8080"
 	}
 
 	// SD errors
