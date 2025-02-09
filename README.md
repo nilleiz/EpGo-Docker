@@ -145,10 +145,6 @@ Options:
     Schedule Days: 7
     Subtitle into Description: false
     Insert credits tag into XML file: true
-    Local Images Cache: true
-    Images Path: /data/images/
-    Proxy Images: false
-    Hostname: localhost:8080
     Rating:
         Insert rating tag into XML file: true
         Maximum rating entries. 0 for all entries: 1

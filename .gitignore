@@ -10,3 +10,6 @@ dev
 a.yaml
 *.iml
 config.yaml
+config_cache.json
+image_cache.json
+.gitignore

@@ -218,7 +218,6 @@ func (c *config) InitConfig() {
 
 	// Options
 	c.Options.PosterAspect = "all"
-	c.Options.TVShowImages = false
 	c.Options.Schedule = 7
 	c.Options.SubtitleIntoDescription = false
 	c.Options.Credits = false

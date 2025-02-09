@@ -53,15 +53,6 @@ func getMsg(code int) (msg string) {
 		msg = "Update Config File"
 	case 0301:
 		msg = "Remove Cache File"
-
-	case 401:
-		msg = "Download images"
-
-	case 402:
-		msg = "Dowloaded Images Path"
-
-	case 403:
-		msg = "Local Images Cache"
 	}
 
 	return

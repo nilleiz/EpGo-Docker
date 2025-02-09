@@ -9,11 +9,7 @@ Options:
     Schedule Days: 3
     Subtitle into Description: true
     Insert credits tag into XML file: true
-    Local Images Cache: true
-    Images Path: /app/images/
-    Proxy Images: false
     Image Live and New Icons: true
-    Hostname: localhost:8112
     Rating:
         Insert rating tag into XML file: false
         Maximum rating entries. 0 for all entries: 1
