@@ -9,6 +9,7 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
+
 func (e *Entry) manageChannels(sd *SD) (err error) {
 
 	defer func() {
@@ -121,6 +122,7 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 		Items:     promptItems,
 		Size:      20,
 		Templates: templates,
+                CursorPos: selection,
 
 	}
 
@@ -133,7 +135,7 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 	}
 
 	for {
-		index, _, err := prompt.Run()
+		index, _, err = prompt.Run()
 
 		if err != nil {
 			if err == promptui.ErrInterrupt {
@@ -159,9 +161,8 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 
 		// Update promptItems to reflect the change
 		promptItems[index] = item
-
-		// prompt.Items = promptItems // Not strictly necessary, but good for consistency
-
+		prompt.Items = promptItems // Not strictly necessary, but good for consistency
+                prompt.CursorPos = index
 	}
 	// Collect selected channels and add/remove accordingly.
 	for _, item := range promptItems {
