@@ -12,7 +12,7 @@ COPY *.go ./
 
 # No need for go mod init here, it should be done before you build the Dockerfile
 
-RUN go build -o guide2go -v  # -v for verbose output during build (helpful for debugging)
+RUN go build
 
 # --- Runtime Stage ---
 FROM alpine:3.18
