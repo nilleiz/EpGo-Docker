@@ -7,7 +7,7 @@ on:
 
 jobs:
   image-build-push-prod:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Build the Docker image
       run: |
