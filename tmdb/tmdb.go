@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	tmdbApiKey = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI1MzRjYWI3MjcxZWZiYzI3YWM3Mzk3YWMyZGJiYTIxNiIsIm5iZiI6MTU3MDQxMjAwMS41NTcsInN1YiI6IjVkOWE5NWUxOTJlNTViMDAxYTQ5Mzk1YSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.TAu9mA6oGOrrdWd8AlIVWTiRaWR-qsWiLypB67w-C8I"
-	tmdbURL    = "https://api.themoviedb.org/3/%s"
+	tmdbURL      = "https://api.themoviedb.org/3/%s"
 	tmdbImageUrl = "https://image.tmdb.org/t/p/w94_and_h141_bestv2%s"
 )
 
@@ -84,8 +83,9 @@ type ShowDetails struct {
 	VoteCount   int    `json:"vote_count"`
 }
 
+
 // https://api.themoviedb.org/3/search/multi?query=two%20towers&include_adult=false&language=en-US&page=1
-func SearchItem(searchTerm, mediaType string) (string, error) {
+func SearchItem(searchTerm, mediaType , tmdbApiKey string) (string, error) {
 	// 1. Check the cache FIRST
 	var tmdbUrl string
 	searchTerm = strings.ReplaceAll(searchTerm, "ᴺᵉʷ", "")
@@ -114,7 +114,7 @@ func SearchItem(searchTerm, mediaType string) (string, error) {
 	}
 
 	if cachedURL != "" {
-		return fmt.Sprintf(tmdbImageUrl, cachedURL), nil// Return cached URL if found
+		return fmt.Sprintf(tmdbImageUrl, cachedURL), nil // Return cached URL if found
 	}
 
 	token := "Bearer " + tmdbApiKey
@@ -136,14 +136,14 @@ func SearchItem(searchTerm, mediaType string) (string, error) {
 	client := &http.Client{}
 
 	resp, err := client.Do(req)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("tmdb response was non-200: %v", resp.Status)
+	}
 	if err != nil {
 		return "", fmt.Errorf("error making TMDB request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("tmdb response was non-200: %v", resp.Status)
-	}
 
 	var r Results
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil { // Check decode errors
@@ -165,33 +165,6 @@ func SearchItem(searchTerm, mediaType string) (string, error) {
 	}
 
 	return fmt.Sprintf(tmdbImageUrl, posterPath), nil
-}
-
-func details(showID string) error {
-	// https://api.themoviedb.org/3/tv/{series_id}
-	tmdbUrl := fmt.Sprintf(tmdbURL+"/%s", "tv", showID)
-	client := &http.Client{}
-	token := "Bearer " + tmdbApiKey
-
-	req, err := http.NewRequest(http.MethodGet, tmdbUrl, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", token)
-	req.Header.Set("accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	details := &ShowDetails{}
-	enc := json.NewDecoder(resp.Body)
-	enc.Decode(details)
-
-	fmt.Println(details)
-	return nil
 }
 
 func getImageURL(name string) (string, error) {

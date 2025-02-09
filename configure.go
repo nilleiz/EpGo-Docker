@@ -168,7 +168,7 @@ func (c *config) Open() (err error) {
 		showInfo("G2G", fmt.Sprintf("%s (rating) [%s]", getMsg(0300), Config.File))
 
 	}
-	if !bytes.Contains(data, []byte("Use SchedulesDirect Links")){
+	if !bytes.Contains(data, []byte("Use SchedulesDirect Links")) {
 		newOptions = true
 		Config.Options.SchedulesDirectLinks = false
 		logger.Info("Added schedules direct link download option")
@@ -182,6 +182,12 @@ func (c *config) Open() (err error) {
 
 		showInfo("G2G", fmt.Sprintf("%s (SD errors) [%s]", getMsg(0300), Config.File))
 
+	}
+
+	if !bytes.Contains(data, []byte("The MovieDB")){
+		newOptions = true
+		Config.Options.tmdbApiKey = ""
+		logger.Info("added tmdb api key value")
 	}
 
 	if newOptions {

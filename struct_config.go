@@ -15,6 +15,7 @@ type config struct {
 	} `yaml:"Files"`
 
 	Options struct {
+		tmdbApiKey              string `yaml:"The MovieDB api key"`
 		PosterAspect            string `yaml:"Poster Aspect"`
 		Schedule                int    `yaml:"Schedule Days"`
 		SubtitleIntoDescription bool   `yaml:"Subtitle into Description"`

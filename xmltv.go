@@ -173,7 +173,10 @@ func getProgram(channel G2GCache) (p []Programme) {
 
 			// Icon
 			var imageURL string
-			if imageURL, _ = tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2]); imageURL == "" && Config.Options.SchedulesDirectLinks {
+			if imageURL, err = tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.tmdbApiKey); imageURL == "" && Config.Options.SchedulesDirectLinks {
+				if err != nil {
+					panic(fmt.Errorf("could not connect to imdb. check your api key"))
+				}
 				icons := Cache.GetIcon(s.ProgramID[0:10])
 				if len(icons) != 0 {
 					imageURL = icons[0].Src
