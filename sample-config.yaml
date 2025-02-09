@@ -1,25 +1,25 @@
 Account:
-    Username:
-    Password:
+    Username: sample
+    Password: sample
 Files:
-    Cache: /app/USA_cache.json
-    XMLTV: /app/USA.xml
+    Cache: config_cache.json
+    XMLTV: config.xml
+    The MovieDB cache file: imdb_image_cache.json
 Options:
+    The MovieDB api key: ""
     Poster Aspect: all
-    Schedule Days: 3
-    Subtitle into Description: true
-    Insert credits tag into XML file: true
-    Image Live and New Icons: true
+    Schedule Days: 1
+    Subtitle into Description: false
+    Use SchedulesDirect Links for images: true
+    Insert credits tag into XML file: false
     Rating:
         Insert rating tag into XML file: false
         Maximum rating entries. 0 for all entries: 1
         Preferred countries. ISO 3166-1 alpha-3 country code. Leave empty for all systems:
             - USA
         Use country code as rating system: false
-    Show download errors from Schedules Direct in the log: true
+    Show download errors from Schedules Direct in the log: false
 Station:
-    - Name: HBO Family
-      ID: "16585"
+    - Name: WGBO-DT
+      ID: "42635"
       Lineup: USA-IL67050-X
-    
-

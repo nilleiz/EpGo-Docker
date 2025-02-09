@@ -174,6 +174,11 @@ func (c *config) Open() (err error) {
 		logger.Info("Added schedules direct link download option")
 	}
 
+	if !bytes.Contains(data, []byte("The MovieDB cache")) {
+		newOptions = true
+		Config.Files.TmdbCacheFile = "imdb_image_cache.json"
+	}
+
 	// SD errors
 	if !bytes.Contains(data, []byte("download errors")) {
 
@@ -184,14 +189,13 @@ func (c *config) Open() (err error) {
 
 	}
 
-	if !bytes.Contains(data, []byte("The MovieDB")){
+	if !bytes.Contains(data, []byte("The MovieDB")) {
 		newOptions = true
-		Config.Options.tmdbApiKey = ""
+		Config.Options.TmdbApiKey = ""
 		logger.Info("added tmdb api key value")
 	}
 
 	if newOptions {
-
 		err = c.Save()
 		if err != nil {
 			return

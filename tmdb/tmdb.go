@@ -85,7 +85,7 @@ type ShowDetails struct {
 
 
 // https://api.themoviedb.org/3/search/multi?query=two%20towers&include_adult=false&language=en-US&page=1
-func SearchItem(searchTerm, mediaType , tmdbApiKey string) (string, error) {
+func SearchItem(searchTerm, mediaType, tmdbApiKey, imageCacheFile string) (string, error) {
 	// 1. Check the cache FIRST
 	var tmdbUrl string
 	searchTerm = strings.ReplaceAll(searchTerm, "ᴺᵉʷ", "")
@@ -108,7 +108,7 @@ func SearchItem(searchTerm, mediaType , tmdbApiKey string) (string, error) {
 		mediaType = "default"
 	}
 
-	cachedURL, err := getImageURL(searchTerm + "-" + mediaType) // Include media type in cache key
+	cachedURL, err := getImageURL(searchTerm + "-" + mediaType, imageCacheFile) // Include media type in cache key
 	if err != nil {
 		return "", fmt.Errorf("error checking cache: %w", err) // Handle cache read errors
 	}
@@ -151,7 +151,7 @@ func SearchItem(searchTerm, mediaType , tmdbApiKey string) (string, error) {
 	}
 
 	if len(r.TmdbResults) == 0 {
-		return "", fmt.Errorf("%s not found", mediaType)
+		return "", nil
 	}
 
 	posterPath := r.TmdbResults[0].PosterPath
@@ -159,7 +159,7 @@ func SearchItem(searchTerm, mediaType , tmdbApiKey string) (string, error) {
 		return posterPath, nil
 	}
 	// 3. Add to cache AFTER successful TMDB request
-	err = addImageToCache(searchTerm+"-"+mediaType, posterPath) // Use combined key
+	err = addImageToCache(searchTerm+"-"+mediaType, posterPath, imageCacheFile) // Use combined key
 	if err != nil {
 		fmt.Println("Error adding to cache:", err) // Log the error, but don't stop execution
 	}
@@ -167,8 +167,8 @@ func SearchItem(searchTerm, mediaType , tmdbApiKey string) (string, error) {
 	return fmt.Sprintf(tmdbImageUrl, posterPath), nil
 }
 
-func getImageURL(name string) (string, error) {
-	imageCacheFile, err := os.Open("image_cache.json") // Only open for reading
+func getImageURL(name, cacheFile string) (string, error) {
+	imageCacheFile, err := os.Open(cacheFile) // Only open for reading
 	if err != nil {
 		if os.IsNotExist(err) { // Handle file not found gracefully.
 			return "", nil // Treat as not found, no error
@@ -195,13 +195,13 @@ func getImageURL(name string) (string, error) {
 	return "", nil // Not found
 }
 
-func addImageToCache(name, url string) error {
+func addImageToCache(name, url, cacheFile string) error {
 	entry := map[string]string{
 		"name": name,
 		"url":  url,
 	}
 
-	imageCacheFile, err := os.OpenFile("image_cache.json", os.O_RDWR|os.O_CREATE, 0644)
+	imageCacheFile, err := os.OpenFile(cacheFile, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("error opening image cache file: %w", err)
 	}

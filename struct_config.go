@@ -10,12 +10,13 @@ type config struct {
 	} `yaml:"Account"`
 
 	Files struct {
-		Cache string `yaml:"Cache"`
-		XMLTV string `yaml:"XMLTV"`
+		Cache         string `yaml:"Cache"`
+		XMLTV         string `yaml:"XMLTV"`
+		TmdbCacheFile string `yaml:"The MovieDB cache file"`
 	} `yaml:"Files"`
 
 	Options struct {
-		tmdbApiKey              string `yaml:"The MovieDB api key"`
+		TmdbApiKey              string `yaml:"The MovieDB api key"`
 		PosterAspect            string `yaml:"Poster Aspect"`
 		Schedule                int    `yaml:"Schedule Days"`
 		SubtitleIntoDescription bool   `yaml:"Subtitle into Description"`
