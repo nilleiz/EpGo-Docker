@@ -1,13 +1,9 @@
 FROM golang:1.21-alpine as builder
 
-# Create a working directory inside the builder stage *before* copying
 WORKDIR /app
-
 COPY go.mod go.sum ./
-RUN go mod download  # Download dependencies *before* copying the rest of the code
-
-COPY . . 
-
+RUN go mod download
+COPY . .
 RUN go get .
 RUN go build
 
@@ -17,6 +13,9 @@ ARG USER=docker
 ARG UID=1000
 ARG GID=1000
 
+RUN apk add --no-cache bash openrc busybox-suid
+
+# --- Create user and group ---
 RUN addgroup -g "${GID}" "${USER}" && \
     adduser -u "${UID}" -G "${USER}" -h /app -s /sbin/nologin -D "${USER}"
 
@@ -25,6 +24,16 @@ WORKDIR /app
 COPY --from=builder --chown="${USER}:${USER}" /app/guide2go /usr/local/bin/guide2go
 COPY --chown="${USER}:${USER}" sample-config.yaml /app/config.yaml
 
+# --- Cron setup (Corrected) ---
+
+# 1. Create crontab *before* switching user
+#    We do this as root, so we have permissions.
+RUN echo "*/5 * * * * /usr/local/bin/guide2go --config /app/config.yaml >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/crontabs/docker
+
+# 2.  Change ownership of the crontab to the correct user.
+RUN chown "${USER}:${USER}" /etc/crontabs/docker
+
+# --- Switch to the non-root user ---
 USER "${USER}"
 
-CMD ["/usr/local/bin/guide2go", "--config", "/app/config.yaml"]
+CMD ["crond", "-f", "-l", "2"]

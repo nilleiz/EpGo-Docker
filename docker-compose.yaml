@@ -1,4 +1,3 @@
-version: "3.4"
 services:
     guide2go:
       container_name: guide2go
@@ -9,5 +8,4 @@ services:
         - TZ=America/Chicago
       volumes:
         - YOUR_CONFIG.YAML_FOLDER:/app/
-        - YOUR_IMAGES_FOLDER:/app/images/
       restart: always

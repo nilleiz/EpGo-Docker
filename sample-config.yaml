@@ -4,7 +4,7 @@ Account:
 Files:
     Cache: config_cache.json
     XMLTV: config.xml
-    The MovieDB cache file: imdb_image_cache.json
+    The MovieDB cache file: config_tmdb_cache.json
 Options:
     The MovieDB api key: ""
     Poster Aspect: all

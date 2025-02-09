@@ -176,7 +176,7 @@ func (c *config) Open() (err error) {
 
 	if !bytes.Contains(data, []byte("The MovieDB cache")) {
 		newOptions = true
-		Config.Files.TmdbCacheFile = "imdb_image_cache.json"
+		Config.Files.TmdbCacheFile = ""
 	}
 
 	// SD errors
@@ -230,6 +230,7 @@ func (c *config) InitConfig() {
 	// Files
 	c.Files.Cache = fmt.Sprintf("%s_cache.json", c.File)
 	c.Files.XMLTV = fmt.Sprintf("%s.xml", c.File)
+	c.Files.TmdbCacheFile = fmt.Sprintf("%s_tmdb_cache.json", c.File)
 
 	// Options
 	c.Options.PosterAspect = "all"
