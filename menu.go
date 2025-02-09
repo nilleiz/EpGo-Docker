@@ -22,18 +22,16 @@ func (e *Entry) account() {
 
 	e.headline()
 
-	fmt.Print(fmt.Sprintf("%s: ", getMsg(0100)))
+	fmt.Printf("%s: ", getMsg(0100))
 	fmt.Scanln(&username)
 
-	fmt.Print(fmt.Sprintf("%s: ", getMsg(0101)))
+	fmt.Printf("%s: ", getMsg(0101))
 	fmt.Scanln(&password)
 
 	Config.Account.Username = username
 	Config.Account.Password = SHA1(password)
 
 	Config.Save()
-
-	return
 }
 
 func (e *Entry) addLineup(sd *SD) (err error) {
@@ -120,7 +118,7 @@ func (e *Entry) addLineup(sd *SD) (err error) {
 
 	for {
 
-		fmt.Print(fmt.Sprintf("%s: ", getMsg(0202)))
+		fmt.Printf("%s: ", getMsg(0202))
 		fmt.Scanln(&postalcode)
 
 		sd.Req.Parameter = fmt.Sprintf("?country=%s&postalcode=%s", entry.ShortName, postalcode)

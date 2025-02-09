@@ -109,17 +109,16 @@ func (m *Menu) Show() (selection int) {
 			switch len(fmt.Sprintf("%d", entry.Key)) {
 
 			case 1:
-				fmt.Print(fmt.Sprintf(" %d. ", entry.Key))
+				fmt.Printf(" %d. ", entry.Key)
 			case 2:
-				fmt.Print(fmt.Sprintf("%d. ", entry.Key))
-
+				fmt.Printf(" %d. ", entry.Key)
 			}
 
 			fmt.Println(entry.Value)
 
 		}
 
-		fmt.Print(fmt.Sprintf("%s: ", m.Select))
+		fmt.Printf("%s: ", m.Select)
 		fmt.Scanln(&input)
 
 		selection, err := strconv.Atoi(input)
@@ -135,13 +134,11 @@ func (m *Menu) Show() (selection int) {
 
 		}
 
-		err = errors.New("Invalid Input")
+		err = errors.New("invalid Input")
 		ShowErr(err)
 		fmt.Println()
 
 	}
-
-	return
 }
 
 // ShowInfo : Show info on screen

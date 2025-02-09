@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -203,7 +202,7 @@ func (c *config) Save() (err error) {
 		return err
 	}
 
-	err = ioutil.WriteFile(fmt.Sprintf("%s.yaml", c.File), data, 0644)
+	err = os.WriteFile(fmt.Sprintf("%s.yaml", c.File), data, 0644)
 	if err != nil {
 		return
 	}

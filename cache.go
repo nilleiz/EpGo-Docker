@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 )
@@ -279,7 +278,7 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 
 func (c *cache) Open() (err error) {
 
-	data, err := ioutil.ReadFile(Config.Files.Cache)
+	data, err := os.ReadFile(Config.Files.Cache)
 
 	if err != nil {
 		c.Init()
@@ -306,7 +305,7 @@ func (c *cache) Save() (err error) {
 		return err
 	}
 
-	err = ioutil.WriteFile(Config.Files.Cache, data, 0644)
+	err = os.WriteFile(Config.Files.Cache, data, 0644)
 	if err != nil {
 		return
 	}

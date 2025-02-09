@@ -20,7 +20,6 @@ var Config config
 var Config2 string
 var logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-
 func main() {
 	log.SetOutput(os.Stdout)
 	var configure = flag.String("configure", "", "= Create or modify the configuration file. [filename.yaml]")

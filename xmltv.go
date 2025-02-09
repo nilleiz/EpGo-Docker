@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
 	"guide2go/tmdb"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -93,7 +93,7 @@ func CreateXMLTV(filename string) (err error) {
 	he(enc.Flush())
 
 	// write the whole body at once
-	err = ioutil.WriteFile(Config.Files.XMLTV, buf.Bytes(), 0644)
+	err = os.WriteFile(Config.Files.XMLTV, buf.Bytes(), 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -113,7 +113,6 @@ func (channel *G2GCache) getLogo() (icon Icon) {
 
 func getProgram(channel G2GCache) (p []Programme) {
 	if schedule, ok := Cache.Schedule[channel.StationID]; ok {
-
 
 		for _, s := range schedule {
 
@@ -174,7 +173,7 @@ func getProgram(channel G2GCache) (p []Programme) {
 
 			// Icon
 			imageURL, _ := tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2])
-      // TODO: Add here to not add the image if it is empty, maybe using log error
+			// TODO: Add here to not add the image if it is empty, maybe using log error
 
 			pro.Icon = []Icon{
 				{
