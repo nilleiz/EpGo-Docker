@@ -9,7 +9,6 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
-
 func (e *Entry) manageChannels(sd *SD) (err error) {
 
 	defer func() {
@@ -118,12 +117,11 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 	}
 
 	prompt := promptui.Select{
-		Label:     "Available Channels (Space to select, Enter to finish)",
+		Label:     "Available Channels (Enter To Select, Control + C to save.)",
 		Items:     promptItems,
 		Size:      20,
 		Templates: templates,
-                CursorPos: selection,
-
+		CursorPos: selection,
 	}
 
 	// custom searcher function based on channel name, station id and language
@@ -131,7 +129,7 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 		item := promptItems[index]
 		name := item["Name"].(string)
 
-		return caseInsensitiveContains(name, input) 
+		return caseInsensitiveContains(name, input)
 	}
 
 	for {
@@ -162,7 +160,7 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 		// Update promptItems to reflect the change
 		promptItems[index] = item
 		prompt.Items = promptItems // Not strictly necessary, but good for consistency
-                prompt.CursorPos = index
+		prompt.CursorPos = index
 	}
 	// Collect selected channels and add/remove accordingly.
 	for _, item := range promptItems {

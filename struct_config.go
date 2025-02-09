@@ -19,8 +19,6 @@ type config struct {
 		Schedule                int    `yaml:"Schedule Days"`
 		SubtitleIntoDescription bool   `yaml:"Subtitle into Description"`
 		Credits                 bool   `yaml:"Insert credits tag into XML file"`
-		Hostname                string `yaml:"Hostname"`
-
 		Rating struct {
 			Guidelines          bool     `yaml:"Insert rating tag into XML file"`
 			MaxEntries          int      `yaml:"Maximum rating entries. 0 for all entries"`
