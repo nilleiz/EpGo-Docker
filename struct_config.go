@@ -20,8 +20,6 @@ type config struct {
 		SubtitleIntoDescription bool   `yaml:"Subtitle into Description"`
 		Credits                 bool   `yaml:"Insert credits tag into XML file"`
 		TVShowImages            bool   `yaml:"Local Images Cache"`
-		ImagesPath              string `yaml:"Images Path"`
-		ProxyImages             bool   `yaml:"Proxy Images"`
 		Hostname                string `yaml:"Hostname"`
 
 		Rating struct {

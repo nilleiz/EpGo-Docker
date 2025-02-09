@@ -222,8 +222,6 @@ func (c *config) InitConfig() {
 	c.Options.Schedule = 7
 	c.Options.SubtitleIntoDescription = false
 	c.Options.Credits = false
-	c.Options.ImagesPath = "/data/images/"
-	c.Options.ProxyImages = false
 	Config.Options.Rating.Guidelines = true
 	Config.Options.Rating.Countries = []string{"USA", "CHE", "DE"}
 	Config.Options.Rating.CountryCodeAsSystem = false
