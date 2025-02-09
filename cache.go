@@ -276,6 +276,59 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 	return
 }
 
+func (c *cache) GetIcon(id string) (i []Icon) {
+
+	var aspects = []string{"2x3", "4x3", "3x4", "16x9"}
+	var uri string
+	switch Config.Options.PosterAspect {
+
+	case "all":
+		break
+
+	default:
+		aspects = []string{Config.Options.PosterAspect}
+	}
+
+	if m, ok := c.Metadata[id]; ok {
+		for _, aspect := range aspects {
+			var maxWidth, maxHeight int
+			var finalCategory string = ""
+			for _, icon := range m.Data {
+				if finalCategory == "" && (icon.Category == "Poster Art" || icon.Category == "Box Art" || icon.Category == "Banner-L1" || icon.Category == "Banner-L2") {
+					finalCategory = icon.Category
+				} else if finalCategory == "" && icon.Category == "VOD Art" {
+					finalCategory = icon.Category
+				}
+				if icon.Category != finalCategory {
+					continue
+				}
+
+				if icon.URI[0:7] != "http://" && icon.URI[0:8] != "https://" {
+					icon.URI = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s?token=%s", icon.URI, Token)
+				}
+
+				if icon.Aspect == aspect {
+
+					if icon.Width > maxWidth {
+						maxWidth = icon.Width
+						maxHeight = icon.Height
+						uri = icon.URI
+					}
+
+				}
+
+			}
+			if maxWidth > 0 {
+				i = append(i, Icon{Src: uri, Height: maxHeight, Width: maxWidth})
+			}
+
+		}
+
+	}
+
+	return
+}
+
 func (c *cache) Open() (err error) {
 
 	data, err := os.ReadFile(Config.Files.Cache)

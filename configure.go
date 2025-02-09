@@ -168,6 +168,11 @@ func (c *config) Open() (err error) {
 		showInfo("G2G", fmt.Sprintf("%s (rating) [%s]", getMsg(0300), Config.File))
 
 	}
+	if !bytes.Contains(data, []byte("Use SchedulesDirect Links")){
+		newOptions = true
+		Config.Options.SchedulesDirectLinks = false
+		logger.Info("Added schedules direct link download option")
+	}
 
 	// SD errors
 	if !bytes.Contains(data, []byte("download errors")) {

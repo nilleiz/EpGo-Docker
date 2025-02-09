@@ -18,8 +18,9 @@ type config struct {
 		PosterAspect            string `yaml:"Poster Aspect"`
 		Schedule                int    `yaml:"Schedule Days"`
 		SubtitleIntoDescription bool   `yaml:"Subtitle into Description"`
+		SchedulesDirectLinks    bool   `yaml:"Use SchedulesDirect Links for images"`
 		Credits                 bool   `yaml:"Insert credits tag into XML file"`
-		Rating struct {
+		Rating                  struct {
 			Guidelines          bool     `yaml:"Insert rating tag into XML file"`
 			MaxEntries          int      `yaml:"Maximum rating entries. 0 for all entries"`
 			Countries           []string `yaml:"Preferred countries. ISO 3166-1 alpha-3 country code. Leave empty for all systems"`

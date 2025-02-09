@@ -172,9 +172,13 @@ func getProgram(channel G2GCache) (p []Programme) {
 			pro.EpisodeNums = Cache.GetEpisodeNum(s.ProgramID)
 
 			// Icon
-			imageURL, _ := tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2])
-			// TODO: Add here to not add the image if it is empty, maybe using log error
-
+			var imageURL string
+			if imageURL, _ = tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2]); imageURL == "" && Config.Options.SchedulesDirectLinks {
+				icons := Cache.GetIcon(s.ProgramID[0:10])
+				if len(icons) != 0 {
+					imageURL = icons[0].Src
+				}
+			}
 			pro.Icon = []Icon{
 				{
 					Src: imageURL,

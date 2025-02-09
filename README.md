@@ -211,6 +211,20 @@ Alan zieht aus, da seine Freundin Kandi und er in Las Vegas eine Million Dollar 
 ---
 
 ```yaml
+Use SchedulesDirect Links for images: false
+```
+
+Change to true to use schedule direct as show images as fallback from tmdb images.
+
+###### WARNINGS
+
+1. This will append the token to the images link. Not my fault. that is how schedules direct works
+1. Because tokens are valid for 24 hours only, you need to re-download the xmltv file everyday. This will be better paired with downloading only one day of EPG and using maybe a cron job to keep it updated
+1. If you download more than 500 images, schdulesdirect will rate block you. So, not great for big EPG (more than 100 channels ish)
+
+---
+
+```yaml
 Insert credits tag into XML file: false
 ```
 
