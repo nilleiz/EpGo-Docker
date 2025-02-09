@@ -1,4 +1,4 @@
-FROM golang:1.20-alpine as builder  # 1. Use a specific Go version, and more modern alpine
+FROM golang:1.20-alpine as builder
 
 # Create a working directory inside the builder stage *before* copying
 WORKDIR /app
@@ -15,7 +15,7 @@ COPY *.go ./
 RUN go build -o guide2go -v  # -v for verbose output during build (helpful for debugging)
 
 # --- Runtime Stage ---
-FROM alpine:3.18  # Use a more recent, specific Alpine version
+FROM alpine:3.18
 
 # Use ARG for build-time variables, then ENV for runtime
 ARG USER=docker
@@ -31,7 +31,7 @@ WORKDIR /app
 
 # Copy the binary and config.  Crucially, use the correct paths.
 COPY --from=builder --chown="${USER}:${USER}" /app/guide2go /usr/local/bin/guide2go
-COPY --chown="${USER}:${USER}" sample-config.yaml /app/config.yaml # Copy to the correct final location
+COPY --chown="${USER}:${USER}" sample-config.yaml /app/config.yaml
 
 USER "${USER}"
 
