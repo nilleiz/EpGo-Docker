@@ -1,4 +1,4 @@
-# This is a Fork of the abandoned (?) epgo project
+# This is a Fork of the abandoned (?) Guide2GO project
 
 I implemented changes that were missing in the current epgo version.
 

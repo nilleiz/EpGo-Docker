@@ -85,8 +85,6 @@ func (sd *SD) Update(filename string) (err error) {
 			}
 		}
 		sd.Token = token.Token
-
-		return nil
 	}
 
 	sd.GetData()
