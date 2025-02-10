@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"guide2go/tmdb"
+	"epgo/tmdb"
 	"os"
 	"path/filepath"
 	"runtime"

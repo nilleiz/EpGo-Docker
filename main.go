@@ -10,7 +10,7 @@ import (
 )
 
 // AppName : App name
-const AppName = "guide2go"
+const AppName = "epgo"
 
 // Version : Version
 const Version = "1.1.3"
@@ -29,7 +29,7 @@ func main() {
 
 	flag.Parse()
 	Config2 = *config
-	logger.Info("Guide2Go revamped", "Version", Version, "Forked", "By Chuchodavids")
+	logger.Info("epgo revamped", "Version", Version, "Forked", "By Chuchodavids")
 
 	if *h {
 		fmt.Println()

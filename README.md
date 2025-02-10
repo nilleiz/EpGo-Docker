@@ -1,6 +1,6 @@
-# This is a Fork of the abandoned (?) Guide2Go project
+# This is a Fork of the abandoned (?) epgo project
 
-I implemented changes that were missing in the current Guide2Go version.
+I implemented changes that were missing in the current epgo version.
 
 **Recent changes:**
 
@@ -8,7 +8,7 @@ I implemented changes that were missing in the current Guide2Go version.
 1. Searching for channel to add is no longer a painful task. It can be done easily from the terminal
 1. Add images to shows from The Movie Database
 
-## Guide2Go
+## epgo
 
 ### Features
 
@@ -34,7 +34,7 @@ go mod tidy
 go build
 ```
 
-This will spit out a binary for your OS named `guide2go`
+This will spit out a binary for your OS named `epgo`
 
 ### Docker
 
@@ -44,22 +44,22 @@ I need to set up the docker image. However, you can build your own by running:
 ```
 version: "3.4"
 services:
-    guide2go:
-      container_name: guide2go
-      image: chuchodavids/guide2go:stable
+    epgo:
+      container_name: epgo
+      image: chuchodavids/epgo:stable
       ports:
         - 8080:8080
       environment:
         - TZ: America/Chicago
       volumes:
-        - /YOU_APP_PATH/guide2go:/app
+        - /YOU_APP_PATH/epgo:/app
         - /YOUR_IMAGE_PATH:/app/images
       restart: always
 ```
 
 ## Using the APP
 
-```guide2go -h```
+```epgo -h```
 
 ```bash
 -config string
@@ -73,7 +73,7 @@ services:
 
 **note: You can use the sample config file that is in the /config folder inside of the docker container**
 
-```guide2go -configure MY_CONFIG_FILE.yaml```  
+```epgo -configure MY_CONFIG_FILE.yaml```  
 If the configuration file does not exist, a YAML configuration file is created. 
 
 **Configuration file from version 1.0.6 or earlier is not compatible.**  
@@ -105,7 +105,7 @@ Remove Lineup from the Schedules Direct account.
 4. Manage Channels:  
 Selection of the channels to be used.
 All selected channels are merged into one XML file when the XMLTV file is created.
-When using all channels from all lineups it is recommended to create a separate Guide2Go configuration file for each lineup.  
+When using all channels from all lineups it is recommended to create a separate epgo configuration file for each lineup.  
 5. Create XMLTV File [MY_CONFIG_FILE.xml]:  
 Creates the XMLTV file with the selected channels.  
 
@@ -114,13 +114,13 @@ Creates the XMLTV file with the selected channels.
 Lineup 1:
 
 ```bash
-guide2go -configure Config_Lineup_1.yaml
+epgo -configure Config_Lineup_1.yaml
 ```
 
 Lineup 2:
 
 ```bash
-guide2go -configure Config_Lineup_2.yaml
+epgo -configure Config_Lineup_2.yaml
 ```
 
 
@@ -195,7 +195,7 @@ Some clients only display the description and ignore the subtitle tag from the X
 
 ```XML
 <?xml version="1.0" encoding="UTF-8"?>
-<programme channel="guide2go.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
+<programme channel="epgo.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
    <title lang="de">Two and a Half Men</title>
    <sub-title lang="de">Ich arbeite für Caligula</sub-title>
    <desc lang="de">[Ich arbeite für Caligula]
@@ -232,7 +232,7 @@ Insert credits tag into XML file: false
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<programme channel="guide2go.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
+<programme channel="epgo.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
    <title lang="de">Two and a Half Men</title>
    <sub-title lang="de">Ich arbeite für Caligula</sub-title>
    ...
@@ -265,7 +265,7 @@ Rating:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<programme channel="guide2go.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
+<programme channel="epgo.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
   <title lang="de">Two and a Half Men</title>
   <sub-title lang="de">Ich arbeite für Caligula</sub-title>
   <language>de</language>
@@ -281,7 +281,7 @@ Rating:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<programme channel="guide2go.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
+<programme channel="epgo.67203.schedulesdirect.org" start="20200509134500 +0000" stop="20200509141000 +0000">
   <title lang="de">Two and a Half Men</title>
   <sub-title lang="de">Ich arbeite für Caligula</sub-title>
   <language>de</language>
@@ -375,7 +375,7 @@ Example:
 ### Create the XMLTV file using the command line (CLI): 
 
 ```bash
-guide2go -config MY_CONFIG_FILE.yaml
+epgo -config MY_CONFIG_FILE.yaml
 ```
 
 **The configuration file must have already been created.**

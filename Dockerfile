@@ -21,14 +21,14 @@ RUN addgroup -g "${GID}" "${USER}" && \
 
 WORKDIR /app
 
-COPY --from=builder --chown="${USER}:${USER}" /app/guide2go /usr/local/bin/guide2go
+COPY --from=builder --chown="${USER}:${USER}" /app/epgo /usr/local/bin/epgo
 COPY --chown="${USER}:${USER}" sample-config.yaml /app/config.yaml
 
 # --- Cron setup (Corrected) ---
 
 # 1. Create crontab *before* switching user
 #    We do this as root, so we have permissions.
-RUN echo "*/5 * * * * /usr/local/bin/guide2go --config /app/config.yaml >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/crontabs/docker
+RUN echo "*/5 * * * * /usr/local/bin/epgo --config /app/config.yaml >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/crontabs/docker
 
 # 2.  Change ownership of the crontab to the correct user.
 RUN chown "${USER}:${USER}" /etc/crontabs/docker

@@ -1,6 +1,6 @@
 services:
-    guide2go:
-      container_name: guide2go
+    epgo:
+      container_name: epgo
       build: .
       ports:
         - 8180:8080

@@ -1,4 +1,4 @@
-module guide2go
+module epgo
 
 go 1.21
 
