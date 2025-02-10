@@ -174,6 +174,11 @@ func (c *config) Open() (err error) {
 		logger.Info("Added schedules direct link download option")
 	}
 
+	if !bytes.Contains(data, []byte("Live and New icons")){
+		newOptions = true
+		Config.Options.LiveIcons = false
+	}
+
 	if !bytes.Contains(data, []byte("The MovieDB cache")) {
 		newOptions = true
 		Config.Files.TmdbCacheFile = ""
@@ -241,6 +246,7 @@ func (c *config) InitConfig() {
 	Config.Options.Rating.Countries = []string{"USA", "CHE", "DE"}
 	Config.Options.Rating.CountryCodeAsSystem = false
 	Config.Options.Rating.MaxEntries = 1
+	Config.Options.LiveIcons = false
 
 }
 

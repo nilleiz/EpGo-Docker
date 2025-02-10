@@ -144,12 +144,13 @@ func getProgram(channel G2GCache) (p []Programme) {
 				lang = channel.BroadcastLanguage[0]
 			}
 
-			// New and Live guide mini-icons
 			pro.Title = Cache.GetTitle(s.ProgramID, lang)
-			if s.LiveTapeDelay == "Live" {
+
+			// New and Live guide mini-icons
+			if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
 				pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
 			}
-			if s.New && s.LiveTapeDelay != "Live" {
+			if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
 				pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
 			}
 

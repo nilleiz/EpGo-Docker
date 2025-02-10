@@ -16,6 +16,7 @@ type config struct {
 	} `yaml:"Files"`
 
 	Options struct {
+		LiveIcons bool `yaml:"Live and New icons"`
 		TmdbApiKey              string `yaml:"The MovieDB api key"`
 		PosterAspect            string `yaml:"Poster Aspect"`
 		Schedule                int    `yaml:"Schedule Days"`
