@@ -15,6 +15,7 @@ func (sd *SD) Init() (err error) {
 
 	sd.BaseURL = "https://json.schedulesdirect.org/20141201/"
 
+	// Funtion to get token
 	sd.Login = func() (err error) {
 
 		sd.Req.URL = sd.BaseURL + "token"
@@ -48,6 +49,7 @@ func (sd *SD) Init() (err error) {
 		return
 	}
 
+	// Status function to check status of schedules direct API
 	sd.Status = func() (err error) {
 
 		fmt.Println()
@@ -164,8 +166,6 @@ func (sd *SD) Connect() (err error) {
 
 	var sdStatus SDStatus
 
-	logger.Info("ScheduleDirect TOKEN call", "URL", sd.Req.URL)
-
 	req, err := http.NewRequest(sd.Req.Type, sd.Req.URL, bytes.NewBuffer(sd.Req.Data))
 	if err != nil {
 		logger.Error("Could not create request for Token", "error", err)
@@ -184,10 +184,9 @@ func (sd *SD) Connect() (err error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.Error("failed to get token from Schedules Direct", "error", err)
+		logger.Error("failed communicate with Schedules Direct API", "error", err)
 		return
 	}
-	logger.Info("SchedulesDirect token retrieved")
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -248,17 +247,6 @@ func (sd *SD) Connect() (err error) {
 
 	case "schedule", "program":
 		sd.Resp.Body = body
-
-	}
-
-	switch sdStatus.Code {
-
-	case 0:
-		//showInfo("SD", sd.Res.Message)
-
-	default:
-		err = fmt.Errorf("%s [SD API Error Code: %d]", sdStatus.Message, sdStatus.Code)
-		ShowErr(err)
 
 	}
 

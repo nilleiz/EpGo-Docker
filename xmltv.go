@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/xml"
-	"fmt"
 	"epgo/tmdb"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"

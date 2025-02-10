@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "${fileDirname}",
-            "args": ["-configure", "config.yaml"],
+            "args": ["-config", "config.yaml"],
             "console": "integratedTerminal"
         }
     ]

@@ -28,18 +28,65 @@ func (sd *SD) Update(filename string) (err error) {
 		return
 	}
 
+	// loads default functions and variables
 	err = sd.Init()
 	if err != nil {
 		return
 	}
 
 	if len(sd.Token) == 0 {
-
-		err = sd.Login()
-		if err != nil {
-			return
+		// store token in a file
+		token := struct {
+			Token string `json:"token"`
+			Date  time.Time `json:"date"`
+		}{
+			Token: sd.Token,
 		}
 
+		tokenF, err := os.Stat("token.json")
+		if err != nil || tokenF.Size() == 0 {
+			if os.IsNotExist(err) || tokenF.Size() == 0 {
+				// Create the file if it doesn't exist, but don't try to read from it yet.
+				err := os.WriteFile("token.json", []byte("{}"), 0644) // Write empty JSON initially
+				if err != nil {
+					return fmt.Errorf("creating token file: %w", err) // wrap error for context
+				}
+			} else {
+				return fmt.Errorf("reading token file: %w", err) // wrap error for context
+			}
+		}
+		tokenFile, err := os.OpenFile("token.json", os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			return fmt.Errorf("unmarshaling token file: %w", err) // wrap error for context
+		}
+		dec := json.NewDecoder(tokenFile)
+		err = dec.Decode(&token)
+		if err != nil {
+			return fmt.Errorf("unmarshaling token file: %w", err) // wrap error for context
+		}
+		defer tokenFile.Close() // Important to close the file!
+
+		if time.Since(token.Date) > time.Hour*23 {
+			err = sd.Login()
+			if err != nil {
+				return err
+			}
+			token.Token = sd.Token
+			token.Date = time.Now()
+			if _, err := tokenFile.Seek(0, 0); err != nil {
+				return fmt.Errorf("could not delete token file")
+			}
+			if err := tokenFile.Truncate(0); err != nil {
+				return fmt.Errorf("could not delete token file")
+			}
+			enc := json.NewEncoder(tokenFile)
+			if err := enc.Encode(token); err != nil {
+				return fmt.Errorf("could not unmarshal token file")
+			}
+		}
+		sd.Token = token.Token
+
+		return nil
 	}
 
 	sd.GetData()

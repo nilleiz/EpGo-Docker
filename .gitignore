@@ -2,9 +2,6 @@ images
 compiler
 build.sh
 guide2go
-guide2go.sublime-project
-guide2go.sublime-workspace
-guide2go.code-workspace
 dev
 *.xml
 a.yaml
@@ -13,3 +10,7 @@ config.yaml
 config_cache.json
 image_cache.json
 .gitignore
+epgo**
+test/**
+token.json
+imdb_image_cache.json
