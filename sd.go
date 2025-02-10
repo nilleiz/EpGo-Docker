@@ -191,7 +191,7 @@ func (sd *SD) Connect() (err error) {
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("SchedulesDirect token retrieval returned a non-200 code", "http", resp.Status)
-		return err
+		return fmt.Errorf("status code non-200: %v", resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)

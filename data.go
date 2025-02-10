@@ -66,7 +66,9 @@ func (sd *SD) Update(filename string) (err error) {
 		}
 		defer tokenFile.Close() // Important to close the file!
 
-		if time.Since(token.Date) > time.Hour*23 {
+		sd.Token = token.Token
+		err = sd.Status()
+		if time.Since(token.Date) > time.Hour*23 || err != nil {
 			err = sd.Login()
 			if err != nil {
 				return err
@@ -83,6 +85,8 @@ func (sd *SD) Update(filename string) (err error) {
 			if err := enc.Encode(token); err != nil {
 				return fmt.Errorf("could not unmarshal token file")
 			}
+		} else {
+			logger.Info("Using cached credentials for SD")
 		}
 		sd.Token = token.Token
 	}
