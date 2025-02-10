@@ -1,0 +1,80 @@
+name: Release Go Project
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.21']
+        os_arch:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Build project
+        run: |
+          GOOS=${{ matrix.os_arch.goos }} GOARCH=${{ matrix.os_arch.goarch }} go build -ldflags="-s -w" -o epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}
+
+      - name: Tar binary
+        run: |
+          tar -czvf epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}.tar.gz epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}
+      - name: Upload artifact for ${{ matrix.os_arch.goos }}-${{ matrix.os_arch.goarch }}
+        uses: actions/upload-artifact@v4 # Updated to v3
+        with:
+          name: epgo-${{ matrix.os_arch.goos }}-${{ matrix.os_arch.goarch }}
+          path: epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}.tar.gz
+
+  create_release: # Renamed job for clarity and dependency
+    needs: build # Make sure build job completes first
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4 # Updated to v3
+        with:
+          path: epgo-builds
+
+      - name: Check for existing release
+        id: check_release
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag,
+              });
+              core.setOutput('exists', true);
+            } catch (error) {
+              core.setOutput('exists', false);
+            }
+
+      - name: Create Release
+        if: steps.check_release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            epgo-builds/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
