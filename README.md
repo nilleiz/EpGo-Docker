@@ -1,14 +1,4 @@
-# This is a Fork of the abandoned (?) Guide2GO project
-
-I implemented changes that were missing in the current epgo version.
-
-**Recent changes:**
-
-1. For players like tiviMate I added the "live" and "new" icon in the tittle of the program. This is usually auto-added in Emby or other IPTV players, but TiviMate does not do this by reading XML tags.
-1. Searching for channel to add is no longer a painful task. It can be done easily from the terminal
-1. Add images to shows from The Movie Database
-
-## epgo
+# EPGo
 
 ### Features
 

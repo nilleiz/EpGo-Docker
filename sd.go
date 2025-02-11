@@ -65,12 +65,15 @@ func (sd *SD) Init() (err error) {
 			return
 		}
 
+		if sd.Resp.Status.Code == 3000 || sd.Resp.Status.Code == 4009 {
+			logger.Error("Schedule Direct issue", "status_message", sd.Resp.Status.Message, "status_code", sd.Resp.Status.Code)
+			return fmt.Errorf("schdule Direct is down: %w", err)
+		}
+
+
 		showInfo("SD", fmt.Sprintf("Account Expires: %v", sd.Resp.Status.Account.Expires))
 		showInfo("SD", fmt.Sprintf("Lineups: %d / %d", len(sd.Resp.Status.Lineups), sd.Resp.Status.Account.MaxLineups))
 
-		for _, status := range sd.Resp.Status.SystemStatus {
-			showInfo("SD", fmt.Sprintf("System Status: %s [%s]", status.Status, status.Message))
-		}
 
 		showInfo("G2G", fmt.Sprintf("Channels: %d", len(Config.Station)))
 
@@ -168,7 +171,7 @@ func (sd *SD) Connect() (err error) {
 
 	req, err := http.NewRequest(sd.Req.Type, sd.Req.URL, bytes.NewBuffer(sd.Req.Data))
 	if err != nil {
-		logger.Error("Could not create request for Token", "error", err)
+		logger.Warn("Could not create request for Token", "error", err)
 		return
 	}
 

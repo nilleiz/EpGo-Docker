@@ -69,6 +69,11 @@ func (sd *SD) Update(filename string) (err error) {
 		sd.Token = token.Token
 		err = sd.Status()
 		if time.Since(token.Date) > time.Hour*23 || err != nil {
+			logger.Info("Current Token expired grabbing new token")
+			// check this when everything is working
+			if sd.Resp.Status.Code != 0 {
+				return err
+			}
 			err = sd.Login()
 			if err != nil {
 				return err
