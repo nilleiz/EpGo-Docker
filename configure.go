@@ -171,7 +171,7 @@ func (c *config) Open() (err error) {
 	if !bytes.Contains(data, []byte("Use SchedulesDirect Links")) {
 		newOptions = true
 		Config.Options.SchedulesDirectLinks = false
-		logger.Info("Added schedules direct link download option")
+		logger.Debug("Added schedules direct link download option")
 	}
 
 	if !bytes.Contains(data, []byte("Live and New icons")){
@@ -197,7 +197,7 @@ func (c *config) Open() (err error) {
 	if !bytes.Contains(data, []byte("The MovieDB")) {
 		newOptions = true
 		Config.Options.TmdbApiKey = ""
-		logger.Info("added tmdb api key value")
+		logger.Debug("added tmdb api key value")
 	}
 
 	if newOptions {

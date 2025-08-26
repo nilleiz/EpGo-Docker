@@ -69,7 +69,7 @@ func (sd *SD) Update(filename string) (err error) {
 		sd.Token = token.Token
 		err = sd.Status()
 		if time.Since(token.Date) > time.Hour*23 || err != nil {
-			logger.Info("Current Token expired grabbing new token")
+			logger.Debug("Current Token expired grabbing new token")
 			// check this when everything is working
 			if sd.Resp.Status.Code != 0 {
 				return err
@@ -91,7 +91,7 @@ func (sd *SD) Update(filename string) (err error) {
 				return fmt.Errorf("could not unmarshal token file")
 			}
 		} else {
-			logger.Info("Using cached credentials for SD")
+			logger.Debug("Using cached credentials for SD")
 		}
 		sd.Token = token.Token
 	}

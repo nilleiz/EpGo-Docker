@@ -29,7 +29,7 @@ func main() {
 
 	flag.Parse()
 	Config2 = *config
-	logger.Info("epgo revamped", "Version", Version, "Forked", "By Chuchodavids")
+	logger.Debug("epgo revamped", "Version", Version, "Forked", "By Chuchodavids")
 
 	if *h {
 		fmt.Println()
