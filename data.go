@@ -33,68 +33,9 @@ func (sd *SD) Update(filename string) (err error) {
 	if err != nil {
 		return
 	}
+	err = sd.Login()
 
-	if len(sd.Token) == 0 {
-		// store token in a file
-		token := struct {
-			Token string `json:"token"`
-			Date  time.Time `json:"date"`
-		}{
-			Token: sd.Token,
-		}
-
-		tokenF, err := os.Stat("token.json")
-		if err != nil || tokenF.Size() == 0 {
-			if os.IsNotExist(err) || tokenF.Size() == 0 {
-				// Create the file if it doesn't exist, but don't try to read from it yet.
-				err := os.WriteFile("token.json", []byte("{}"), 0644) // Write empty JSON initially
-				if err != nil {
-					return fmt.Errorf("creating token file: %w", err) // wrap error for context
-				}
-			} else {
-				return fmt.Errorf("reading token file: %w", err) // wrap error for context
-			}
-		}
-		tokenFile, err := os.OpenFile("token.json", os.O_RDWR|os.O_CREATE, 0644)
-		if err != nil {
-			return fmt.Errorf("unmarshaling token file: %w", err) // wrap error for context
-		}
-		dec := json.NewDecoder(tokenFile)
-		err = dec.Decode(&token)
-		if err != nil {
-			return fmt.Errorf("unmarshaling token file: %w", err) // wrap error for context
-		}
-		defer tokenFile.Close() // Important to close the file!
-
-		sd.Token = token.Token
-		err = sd.Status()
-		if time.Since(token.Date) > time.Hour*23 || err != nil {
-			logger.Debug("Current Token expired grabbing new token")
-			// check this when everything is working
-			if sd.Resp.Status.Code != 0 {
-				return err
-			}
-			err = sd.Login()
-			if err != nil {
-				return err
-			}
-			token.Token = sd.Token
-			token.Date = time.Now()
-			if _, err := tokenFile.Seek(0, 0); err != nil {
-				return fmt.Errorf("could not delete token file")
-			}
-			if err := tokenFile.Truncate(0); err != nil {
-				return fmt.Errorf("could not delete token file")
-			}
-			enc := json.NewEncoder(tokenFile)
-			if err := enc.Encode(token); err != nil {
-				return fmt.Errorf("could not unmarshal token file")
-			}
-		} else {
-			logger.Debug("Using cached credentials for SD")
-		}
-		sd.Token = token.Token
-	}
+	err = sd.Status()
 
 	sd.GetData()
 
@@ -188,6 +129,7 @@ func (sd *SD) GetData() {
 			}()
 
 			count = 0
+			channels = make([]interface{}, 0)
 
 		}
 
@@ -210,7 +152,7 @@ func (sd *SD) GetData() {
 
 		switch t {
 		case "metadata":
-			sd.Req.URL = fmt.Sprintf("%smetadata/programs", sd.BaseURL)
+			sd.Req.URL = fmt.Sprintf("%smetadata/programs/", sd.BaseURL)
 			sd.Req.Call = "metadata"
 			programIds = Cache.GetRequiredMetaIDs()
 			limit = 500
@@ -241,17 +183,17 @@ func (sd *SD) GetData() {
 				err := sd.Program()
 				if err != nil {
 					ShowErr(err)
-				}
+				} else {
+					wg.Add(1)
 
-				wg.Add(1)
+					switch t {
+					case "metadata":
+						go Cache.AddMetadata(&sd.Resp.Body, &wg)
 
-				switch t {
-				case "metadata":
-					go Cache.AddMetadata(&sd.Resp.Body, &wg)
+					case "programs":
+						go Cache.AddProgram(&sd.Resp.Body, &wg)
 
-				case "programs":
-					go Cache.AddProgram(&sd.Resp.Body, &wg)
-
+					}
 				}
 
 				count = 0

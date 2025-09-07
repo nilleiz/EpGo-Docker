@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 var Token string
@@ -42,7 +43,7 @@ func (sd *SD) Init() (err error) {
 			return
 		}
 
-		logger.Info("ScheduleDirect", "Login", sd.Resp.Login.Message)
+		logger.Debug("ScheduleDirect", "Login", sd.Resp.Login.Message)
 
 		sd.Token = sd.Resp.Login.Token
 		Token = sd.Token
@@ -70,10 +71,8 @@ func (sd *SD) Init() (err error) {
 			return fmt.Errorf("schdule Direct is down: %w", err)
 		}
 
-
 		showInfo("SD", fmt.Sprintf("Account Expires: %v", sd.Resp.Status.Account.Expires))
 		showInfo("SD", fmt.Sprintf("Lineups: %d / %d", len(sd.Resp.Status.Lineups), sd.Resp.Status.Account.MaxLineups))
-
 
 		showInfo("G2G", fmt.Sprintf("Channels: %d", len(Config.Station)))
 
@@ -182,7 +181,9 @@ func (sd *SD) Connect() (err error) {
 	req.Header.Set("Token", sd.Token)
 	req.Header.Set("User-Agent", AppName)
 	req.Header.Set("X-Custom-Header", AppName)
-	req.Header.Set("Content-Type", "application/json")
+	if sd.Req.Type == "POST" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -191,11 +192,6 @@ func (sd *SD) Connect() (err error) {
 		return
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.Error("SchedulesDirect token retrieval returned a non-200 code", "http", resp.Status)
-		return fmt.Errorf("status code non-200: %v", resp.Status)
-	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -212,8 +208,26 @@ func (sd *SD) Connect() (err error) {
 		err = json.Unmarshal(body, &sd.Resp.Login)
 		if err != nil {
 			ShowErr(err)
+			return err
 		}
-
+		t := time.Unix(sd.Resp.Login.TokenExpires, 0)
+		showInfo("SD", fmt.Sprintf("Token Expires: %v", t))
+		if t.Before(time.Now()) {
+			logger.Error("Token has expired")
+			var data map[string]interface{}
+			err = json.Unmarshal(sd.Req.Data, &data)
+			if err != nil {
+				logger.Error("could not unmarshal request data to add newToken", "error", err)
+				return err
+			}
+			data["newToken"] = true
+			sd.Req.Data, err = json.Marshal(data)
+			if err != nil {
+				logger.Error("could not marshal request data with newToken", "error", err)
+				return err
+			}
+			sd.Connect()
+		}
 		sdStatus.Code = sd.Resp.Login.Code
 		sdStatus.Message = sd.Resp.Login.Message
 
@@ -251,6 +265,12 @@ func (sd *SD) Connect() (err error) {
 	case "schedule", "program":
 		sd.Resp.Body = body
 
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("SchedulesDirect request returned a non-200 code", "http", resp.Status)
+		fmt.Println(string(sd.Req.Data))
+		return fmt.Errorf("status code non-200: %v", resp.Status)
 	}
 
 	return
