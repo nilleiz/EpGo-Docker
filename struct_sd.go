@@ -28,12 +28,12 @@ type SD struct {
 
 		// Login
 		Login struct {
-			Message  string    `json:"message"`
-			Code     int       `json:"code"`
-			ServerID string    `json:"serverID"`
-			Datetime time.Time `json:"datetime"`
-
-			Token string `json:"token"`
+			Message      string    `json:"message"`
+			Code         int       `json:"code"`
+			ServerID     string    `json:"serverID"`
+			Datetime     time.Time `json:"datetime"`
+			TokenExpires int64     `json:"tokenExpires"`
+			Token        string    `json:"token"`
 		}
 
 		// Status
