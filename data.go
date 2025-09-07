@@ -34,8 +34,14 @@ func (sd *SD) Update(filename string) (err error) {
 		return
 	}
 	err = sd.Login()
+	if err !=nil {
+		return
+	}
 
 	err = sd.Status()
+	if err != nil{
+		return
+	}
 
 	sd.GetData()
 

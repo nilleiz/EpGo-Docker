@@ -35,9 +35,7 @@ func (sd *SD) Init() (err error) {
 		if err != nil {
 
 			if sd.Resp.Login.Code != 0 {
-				// SD Account problem
-				logger.Error("Token request returned a non-200 code", "error", err)
-				return
+				return err
 			}
 
 			return
@@ -209,6 +207,9 @@ func (sd *SD) Connect() (err error) {
 		if err != nil {
 			ShowErr(err)
 			return err
+		}
+		if sd.Resp.Login.Code == 4009 {
+			return fmt.Errorf(sd.Resp.Login.Message)
 		}
 		t := time.Unix(sd.Resp.Login.TokenExpires, 0)
 		showInfo("SD", fmt.Sprintf("Token Expires: %v", t))
