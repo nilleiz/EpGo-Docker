@@ -267,7 +267,7 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 		if len(id) > 10 {
 
 			if _, ok := c.Metadata[id[:10]]; !ok {
-				metaIDs = append(metaIDs, id[:10])
+				metaIDs = append(metaIDs, id)
 			}
 
 		}
