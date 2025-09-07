@@ -15,17 +15,17 @@ var ImageError bool = false
 func (c *cache) Init() {
 
 	if c.Schedule == nil {
-		c.Schedule = make(map[string][]G2GCache)
+		c.Schedule = make(map[string][]EPGoCache)
 	}
 
-	c.Channel = make(map[string]G2GCache)
+	c.Channel = make(map[string]EPGoCache)
 
 	if c.Program == nil {
-		c.Program = make(map[string]G2GCache)
+		c.Program = make(map[string]EPGoCache)
 	}
 
 	if c.Metadata == nil {
-		c.Metadata = make(map[string]G2GCache)
+		c.Metadata = make(map[string]EPGoCache)
 	}
 
 }
@@ -34,7 +34,7 @@ func (c *cache) Remove() {
 
 	if len(Config.Files.Cache) != 0 {
 
-		showInfo("G2G", fmt.Sprintf("%s [%s]", getMsg(0301), Config.Files.Cache))
+		showInfo("EPGo", fmt.Sprintf("%s [%s]", getMsg(0301), Config.Files.Cache))
 		os.RemoveAll(Config.Files.Cache)
 
 		c.Init()
@@ -48,7 +48,7 @@ func (c *cache) AddStations(data *[]byte, lineup string) {
 	c.Lock()
 	defer c.Unlock()
 
-	var g2gCache G2GCache
+	var epgoCache EPGoCache
 	var sdData SDStation
 
 	err := json.Unmarshal(*data, &sdData)
@@ -63,14 +63,14 @@ func (c *cache) AddStations(data *[]byte, lineup string) {
 
 		if ContainsString(channelIDs, sd.StationID) != -1 {
 
-			g2gCache.StationID = sd.StationID
-			g2gCache.Name = sd.Name
-			g2gCache.Callsign = sd.Callsign
-			g2gCache.Affiliate = sd.Affiliate
-			g2gCache.BroadcastLanguage = sd.BroadcastLanguage
-			g2gCache.Logo = sd.Logo
+			epgoCache.StationID = sd.StationID
+			epgoCache.Name = sd.Name
+			epgoCache.Callsign = sd.Callsign
+			epgoCache.Affiliate = sd.Affiliate
+			epgoCache.BroadcastLanguage = sd.BroadcastLanguage
+			epgoCache.Logo = sd.Logo
 
-			c.Channel[sd.StationID] = g2gCache
+			c.Channel[sd.StationID] = epgoCache
 
 		}
 
@@ -83,7 +83,7 @@ func (c *cache) AddSchedule(data *[]byte) {
 	c.Lock()
 	defer c.Unlock()
 
-	var g2gCache G2GCache
+	var epgoCache EPGoCache
 	var sdData []SDSchedule
 
 	err := json.Unmarshal(*data, &sdData)
@@ -95,22 +95,22 @@ func (c *cache) AddSchedule(data *[]byte) {
 	for _, sd := range sdData {
 
 		if _, ok := c.Schedule[sd.StationID]; !ok {
-			c.Schedule[sd.StationID] = []G2GCache{}
+			c.Schedule[sd.StationID] = []EPGoCache{}
 		}
 
 		for _, p := range sd.Programs {
 
-			g2gCache.AirDateTime = p.AirDateTime
-			g2gCache.AudioProperties = p.AudioProperties
-			g2gCache.Duration = p.Duration
-			g2gCache.LiveTapeDelay = p.LiveTapeDelay
-			g2gCache.New = p.New
-			g2gCache.Md5 = p.Md5
-			g2gCache.ProgramID = p.ProgramID
-			g2gCache.Ratings = p.Ratings
-			g2gCache.VideoProperties = p.VideoProperties
+			epgoCache.AirDateTime = p.AirDateTime
+			epgoCache.AudioProperties = p.AudioProperties
+			epgoCache.Duration = p.Duration
+			epgoCache.LiveTapeDelay = p.LiveTapeDelay
+			epgoCache.New = p.New
+			epgoCache.Md5 = p.Md5
+			epgoCache.ProgramID = p.ProgramID
+			epgoCache.Ratings = p.Ratings
+			epgoCache.VideoProperties = p.VideoProperties
 
-			c.Schedule[sd.StationID] = append(c.Schedule[sd.StationID], g2gCache)
+			c.Schedule[sd.StationID] = append(c.Schedule[sd.StationID], epgoCache)
 
 		}
 
@@ -133,7 +133,7 @@ func (c *cache) AddProgram(gzip *[]byte, wg *sync.WaitGroup) {
 		return
 	}
 
-	var g2gCache G2GCache
+	var epgoCache EPGoCache
 	var sdData []SDProgram
 
 	err = json.Unmarshal(b, &sdData)
@@ -144,23 +144,23 @@ func (c *cache) AddProgram(gzip *[]byte, wg *sync.WaitGroup) {
 
 	for _, sd := range sdData {
 
-		g2gCache.Descriptions = sd.Descriptions
-		g2gCache.EpisodeTitle150 = sd.EpisodeTitle150
-		g2gCache.Genres = sd.Genres
+		epgoCache.Descriptions = sd.Descriptions
+		epgoCache.EpisodeTitle150 = sd.EpisodeTitle150
+		epgoCache.Genres = sd.Genres
 
-		g2gCache.HasEpisodeArtwork = sd.HasEpisodeArtwork
-		g2gCache.HasImageArtwork = sd.HasImageArtwork
-		g2gCache.HasSeriesArtwork = sd.HasSeriesArtwork
-		g2gCache.Metadata = sd.Metadata
-		g2gCache.OriginalAirDate = sd.OriginalAirDate
-		g2gCache.ResourceID = sd.ResourceID
-		g2gCache.ShowType = sd.ShowType
-		g2gCache.Titles = sd.Titles
-		g2gCache.ContentRating = sd.ContentRating
-		g2gCache.Cast = sd.Cast
-		g2gCache.Crew = sd.Crew
+		epgoCache.HasEpisodeArtwork = sd.HasEpisodeArtwork
+		epgoCache.HasImageArtwork = sd.HasImageArtwork
+		epgoCache.HasSeriesArtwork = sd.HasSeriesArtwork
+		epgoCache.Metadata = sd.Metadata
+		epgoCache.OriginalAirDate = sd.OriginalAirDate
+		epgoCache.ResourceID = sd.ResourceID
+		epgoCache.ShowType = sd.ShowType
+		epgoCache.Titles = sd.Titles
+		epgoCache.ContentRating = sd.ContentRating
+		epgoCache.Cast = sd.Cast
+		epgoCache.Crew = sd.Crew
 
-		c.Program[sd.ProgramID] = g2gCache
+		c.Program[sd.ProgramID] = epgoCache
 
 	}
 
@@ -182,7 +182,7 @@ func (c *cache) AddMetadata(gzip *[]byte, wg *sync.WaitGroup) {
 
 	var tmp = make([]interface{}, 0)
 
-	var g2gCache G2GCache
+	var epgoCache EPGoCache
 
 	err = json.Unmarshal(b, &tmp)
 	if err != nil {
@@ -216,8 +216,8 @@ func (c *cache) AddMetadata(gzip *[]byte, wg *sync.WaitGroup) {
 
 		} else {
 
-			g2gCache.Data = sdData.Data
-			c.Metadata[sdData.ProgramID] = g2gCache
+			epgoCache.Data = sdData.Data
+			c.Metadata[sdData.ProgramID] = epgoCache
 
 		}
 
@@ -369,7 +369,7 @@ func (c *cache) Save() (err error) {
 func (c *cache) CleanUp() {
 
 	var count int
-	showInfo("G2G", fmt.Sprintf("Clean up Cache [%s]", Config.Files.Cache))
+	showInfo("EPGo", fmt.Sprintf("Clean up Cache [%s]", Config.Files.Cache))
 
 	var programIDs = c.GetAllProgramIDs()
 
@@ -385,10 +385,10 @@ func (c *cache) CleanUp() {
 
 	}
 
-	c.Channel = make(map[string]G2GCache)
-	c.Schedule = make(map[string][]G2GCache)
+	c.Channel = make(map[string]EPGoCache)
+	c.Schedule = make(map[string][]EPGoCache)
 
-	showInfo("G2G", fmt.Sprintf("Deleted Program Informations: %d", count))
+	showInfo("EPGo", fmt.Sprintf("Deleted Program Informations: %d", count))
 
 	err := c.Save()
 	if err != nil {

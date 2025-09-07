@@ -72,7 +72,7 @@ func (sd *SD) Init() (err error) {
 		showInfo("SD", fmt.Sprintf("Account Expires: %v", sd.Resp.Status.Account.Expires))
 		showInfo("SD", fmt.Sprintf("Lineups: %d / %d", len(sd.Resp.Status.Lineups), sd.Resp.Status.Account.MaxLineups))
 
-		showInfo("G2G", fmt.Sprintf("Channels: %d", len(Config.Station)))
+		showInfo("EPGo", fmt.Sprintf("Channels: %d", len(Config.Station)))
 
 		return
 	}

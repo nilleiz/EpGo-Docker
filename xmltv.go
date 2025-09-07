@@ -63,7 +63,7 @@ func CreateXMLTV(filename string) (err error) {
 		return
 	}
 
-	showInfo("G2G", fmt.Sprintf("Create XMLTV File [%s]", Config.Files.XMLTV))
+	showInfo("EPGo", fmt.Sprintf("Create XMLTV File [%s]", Config.Files.XMLTV))
 
 	he(enc.EncodeToken(xml.StartElement{Name: xml.Name{Local: "tv"}, Attr: []xml.Attr{generator, source, info}}))
 
@@ -102,7 +102,7 @@ func CreateXMLTV(filename string) (err error) {
 }
 
 // Channel infos
-func (channel *G2GCache) getLogo() (icon Icon) {
+func (channel *EPGoCache) getLogo() (icon Icon) {
 
 	icon.Src = channel.Logo.URL
 	icon.Height = channel.Logo.Height
@@ -111,7 +111,7 @@ func (channel *G2GCache) getLogo() (icon Icon) {
 	return
 }
 
-func getProgram(channel G2GCache) (p []Programme) {
+func getProgram(channel EPGoCache) (p []Programme) {
 	if schedule, ok := Cache.Schedule[channel.StationID]; ok {
 
 		for _, s := range schedule {

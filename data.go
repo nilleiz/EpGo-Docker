@@ -76,7 +76,7 @@ func (sd *SD) GetData() {
 
 	// Channel list
 	sd.Status()
-	Cache.Channel = make(map[string]G2GCache)
+	Cache.Channel = make(map[string]EPGoCache)
 
 	var lineup []string
 
@@ -96,7 +96,7 @@ func (sd *SD) GetData() {
 	}
 
 	// Schedule
-	showInfo("G2G", fmt.Sprintf("Download Schedule: %d Day(s)", Config.Options.Schedule))
+	showInfo("EPGo", fmt.Sprintf("Download Schedule: %d Day(s)", Config.Options.Schedule))
 
 	var limit = 5000
 
@@ -152,7 +152,7 @@ func (sd *SD) GetData() {
 	var allIDs = Cache.GetAllProgramIDs()
 	var programs = make([]interface{}, 0)
 
-	showInfo("G2G", fmt.Sprintf("Download Program Informations: New: %d / Cached: %d", len(programIds), len(allIDs)-len(programIds)))
+	showInfo("EPGo", fmt.Sprintf("Download Program Informations: New: %d / Cached: %d", len(programIds), len(allIDs)-len(programIds)))
 
 	for _, t := range types {
 
@@ -162,7 +162,7 @@ func (sd *SD) GetData() {
 			sd.Req.Call = "metadata"
 			programIds = Cache.GetRequiredMetaIDs()
 			limit = 500
-			showInfo("G2G", fmt.Sprintf("Download missing Metadata: %d ", len(programIds)))
+			showInfo("EPGo", fmt.Sprintf("Download missing Metadata: %d ", len(programIds)))
 
 		case "programs":
 

@@ -6,16 +6,16 @@ import (
 )
 
 type cache struct {
-	Channel  map[string]G2GCache   `json:"Channel"`
-	Program  map[string]G2GCache   `json:"Program"`
-	Metadata map[string]G2GCache   `json:"Metadata"`
-	Schedule map[string][]G2GCache `json:"Schedule"`
+	Channel  map[string]EPGoCache   `json:"Channel"`
+	Program  map[string]EPGoCache   `json:"Program"`
+	Metadata map[string]EPGoCache   `json:"Metadata"`
+	Schedule map[string][]EPGoCache `json:"Schedule"`
 
 	sync.RWMutex `json:"-"`
 }
 
-// G2GCache : Cache data
-type G2GCache struct {
+// EPGoCache : Cache data
+type EPGoCache struct {
 
 	// Global
 	Md5       string `json:"md5,omitempty"`

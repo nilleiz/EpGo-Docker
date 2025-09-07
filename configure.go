@@ -151,7 +151,7 @@ func (c *config) Open() (err error) {
 
 		Config.Options.Credits = true
 
-		showInfo("G2G", fmt.Sprintf("%s (credits) [%s]", getMsg(0300), Config.File))
+		showInfo("EPGo", fmt.Sprintf("%s (credits) [%s]", getMsg(0300), Config.File))
 
 	}
 
@@ -165,7 +165,7 @@ func (c *config) Open() (err error) {
 		Config.Options.Rating.CountryCodeAsSystem = false
 		Config.Options.Rating.MaxEntries = 1
 
-		showInfo("G2G", fmt.Sprintf("%s (rating) [%s]", getMsg(0300), Config.File))
+		showInfo("EPGo", fmt.Sprintf("%s (rating) [%s]", getMsg(0300), Config.File))
 
 	}
 	if !bytes.Contains(data, []byte("Use SchedulesDirect Links")) {
@@ -190,7 +190,7 @@ func (c *config) Open() (err error) {
 		newOptions = true
 		Config.Options.SDDownloadErrors = false
 
-		showInfo("G2G", fmt.Sprintf("%s (SD errors) [%s]", getMsg(0300), Config.File))
+		showInfo("EPGo", fmt.Sprintf("%s (SD errors) [%s]", getMsg(0300), Config.File))
 
 	}
 
