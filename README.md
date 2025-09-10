@@ -1,12 +1,12 @@
 # EPGo
 
-### Features
+## Features
 
 - Cache function to download only new EPG data
 - No database is required
 - Update EPG with CLI command for using your own scripts
 
-### Requirements
+## Requirements
 
 - [Schedules Direct](https://www.schedulesdirect.org/ "Schedules Direct") Account
 - Computer with 1-2 GB memory
@@ -21,31 +21,38 @@ The following command must be executed with the terminal / command prompt inside
 
 ```bash
 go mod tidy
-go build
+go build epgo
 ```
 
 This will spit out a binary for your OS named `epgo`
 
-### Docker
+### Option 2 -- Docker
 
 I need to set up the docker image. However, you can build your own by running:
 
-**docker-compose**
+#### **docker-compose**
+
+clone this repo:
+
+```bash
+git clone https://github.com/Chuchodavids/EpGo.git
 ```
-version: "3.4"
+
+```docker-compose
 services:
     epgo:
       container_name: epgo
-      image: chuchodavids/epgo:stable
-      ports:
-        - 8080:8080
+      build: .
       environment:
-        - TZ: America/Chicago
+        - TZ=America/Chicago
       volumes:
-        - /YOU_APP_PATH/epgo:/app
-        - /YOUR_IMAGE_PATH:/app/images
+        - YOUR_CONFIG.YAML_FOLDER:/app/
       restart: always
 ```
+
+### Option 3 -- download binary
+
+go to [releases](https://github.com/Chuchodavids/EpGo/releases) and download the needed version
 
 ## Using the APP
 
@@ -56,12 +63,14 @@ services:
     = Get data from Schedules Direct with configuration file. [filename.yaml]
 -configure string
     = Create or modify the configuration file. [filename.yaml]
+-version
+    = shows the current version
 -h  : Show help
 ```
 
 ### Create a config file
 
-**note: You can use the sample config file that is in the /config folder inside of the docker container**
+**note**: You can use the sample config file that is in the /config folder inside of the docker container
 
 ```epgo -configure MY_CONFIG_FILE.yaml```  
 If the configuration file does not exist, a YAML configuration file is created. 
@@ -94,6 +103,7 @@ Remove Lineup from the Schedules Direct account.
 
 4. Manage Channels:  
 Selection of the channels to be used.
+You can now choose to add all channels from a lineup at once or select them individually.
 All selected channels are merged into one XML file when the XMLTV file is created.
 When using all channels from all lineups it is recommended to create a separate epgo configuration file for each lineup.  
 5. Create XMLTV File [MY_CONFIG_FILE.xml]:  
@@ -113,51 +123,46 @@ Lineup 2:
 epgo -configure Config_Lineup_2.yaml
 ```
 
-
-#### The YAML configuration file can be customize with an editor.:
+## CONFIG
 
 ```yaml
 Account:
-    Username: SCHEDULES_DIRECT_USERNAME
-    Password: SCHEDULES_DIRECT_HASHED_PASSWORD
+    Username: YOUR_USERNAME
+    Password:  YOUR_PASSWORD
 Files:
-    Cache: MY_CONFIG_FILE.json
-    XMLTV: MY_CONFIG_FILE.xml
+    Cache: config_cache.json
+    XMLTV: config.xml
+    The MovieDB cache file: imdb_image_cache.json
 Options:
+    Live and New icons: false
+    The MovieDB api key:  YOUR_KEY
     Poster Aspect: all
-    Schedule Days: 7
+    Schedule Days: 1
     Subtitle into Description: false
-    Insert credits tag into XML file: true
+    Use SchedulesDirect Links for images: true
+    Insert credits tag into XML file: false
     Rating:
-        Insert rating tag into XML file: true
+        Insert rating tag into XML file: false
         Maximum rating entries. 0 for all entries: 1
         Preferred countries. ISO 3166-1 alpha-3 country code. Leave empty for all systems:
-          - DEU
-          - CHE
-          - USA
+            - USA
+            - COL
         Use country code as rating system: false
     Show download errors from Schedules Direct in the log: false
 Station:
-  - Name: Fox Sports 1 HD
-    ID: "82547"
-    Lineup: USA-DITV-DEFAULT
-  - Name: Fox Sports 2 HD
-    ID: "59305"
-    Lineup: USA-DITV-DEFAULT
+    - Name: MTV
+      ID: "12345"
+      Lineup: SAMPLE
 ```
 
-##### Account: (Don't change)
-
-Schedules Direct Account data, do not change them in the configuration file.  
-
-##### Files: (Can be customized)**
+### Files: (Can be customized)**
 
 ```yaml
 Cache: /app/file.json  
 XMLTV: /app/file.xml  
 ```
 
-##### Options: (Can be customized)
+### Options: (Can be customized)
 
 ```yaml
 Poster Aspect: all
