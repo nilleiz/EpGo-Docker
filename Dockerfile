@@ -1,5 +1,5 @@
 # Use a smaller base image
-FROM alpine:latest
+FROM alpine:3.22.1
 
 # Install wget and other necessary tools
 RUN apk add --no-cache wget tar
