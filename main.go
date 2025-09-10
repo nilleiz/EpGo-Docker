@@ -13,7 +13,7 @@ import (
 const AppName = "epgo"
 
 // Version : Version
-const Version = "2.0.1"
+const Version = "3.0.1"
 
 // Config : Config file (struct)
 var Config config
@@ -24,6 +24,7 @@ func main() {
 	log.SetOutput(os.Stdout)
 	var configure = flag.String("configure", "", "= Create or modify the configuration file. [filename.yaml]")
 	var config = flag.String("config", "", "= Get data from Schedules Direct with configuration file. [filename.yaml]")
+	var version = flag.Bool("version", false, "= Get version")
 
 	var h = flag.Bool("h", false, ": Show help")
 
@@ -34,6 +35,11 @@ func main() {
 	if *h {
 		fmt.Println()
 		flag.Usage()
+		os.Exit(0)
+	}
+
+	if *version {
+		fmt.Println(Version)
 		os.Exit(0)
 	}
 
