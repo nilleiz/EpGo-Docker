@@ -1,5 +1,7 @@
 # EPGo
 
+subredit: [epgo](https://www.reddit.com/r/EpGo/)
+
 ## Features
 
 - Cache function to download only new EPG data
