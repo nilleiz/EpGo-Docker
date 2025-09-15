@@ -10,7 +10,6 @@ Options:
     Poster Aspect: all
     Schedule Days: 1
     Subtitle into Description: false
-    Use SchedulesDirect Links for images: true
     Insert credits tag into XML file: false
     Rating:
         Insert rating tag into XML file: false

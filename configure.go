@@ -168,11 +168,6 @@ func (c *config) Open() (err error) {
 		showInfo("EPGo", fmt.Sprintf("%s (rating) [%s]", getMsg(0300), Config.File))
 
 	}
-	if !bytes.Contains(data, []byte("Use SchedulesDirect Links")) {
-		newOptions = true
-		Config.Options.SchedulesDirectLinks = false
-		logger.Debug("Added schedules direct link download option")
-	}
 
 	if !bytes.Contains(data, []byte("Live and New icons")){
 		newOptions = true

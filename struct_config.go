@@ -21,7 +21,6 @@ type config struct {
 		PosterAspect            string `yaml:"Poster Aspect"`
 		Schedule                int    `yaml:"Schedule Days"`
 		SubtitleIntoDescription bool   `yaml:"Subtitle into Description"`
-		SchedulesDirectLinks    bool   `yaml:"Use SchedulesDirect Links for images"`
 		Credits                 bool   `yaml:"Insert credits tag into XML file"`
 		Rating                  struct {
 			Guidelines          bool     `yaml:"Insert rating tag into XML file"`

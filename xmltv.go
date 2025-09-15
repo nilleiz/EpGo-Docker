@@ -174,11 +174,14 @@ func getProgram(channel EPGoCache) (p []Programme) {
 
 			// Icon
 			var imageURL string
-			if imageURL, err = tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.TmdbApiKey, Config.Files.TmdbCacheFile); imageURL == "" && Config.Options.SchedulesDirectLinks {
+			if Config.Options.TmdbApiKey != "" {
+				imageURL, err = tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.TmdbApiKey, Config.Files.TmdbCacheFile)
 				if err != nil {
-					ShowErr(fmt.Errorf("could not connect to imdb. check your api key"))
+					ShowErr(fmt.Errorf("could not connect to tmdb. check your api key"))
 				}
-				icons := Cache.GetIcon(s.ProgramID[0:10])
+			}
+			if imageURL == "" {
+				icons := Cache.GetIcon(s.ProgramID)
 				if len(icons) != 0 {
 					imageURL = icons[0].Src
 				}
