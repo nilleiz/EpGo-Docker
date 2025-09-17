@@ -266,7 +266,7 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 
 		if len(id) > 10 {
 
-			if _, ok := c.Metadata[id[:10]]; !ok {
+			if _, ok := c.Metadata[id]; !ok {
 				metaIDs = append(metaIDs, id)
 			}
 
@@ -379,7 +379,7 @@ func (c *cache) CleanUp() {
 
 			count++
 			delete(c.Program, id)
-			delete(c.Metadata, id[0:10])
+			delete(c.Metadata, id)
 
 		}
 
@@ -585,10 +585,10 @@ func (c *cache) GetEpisodeNum(id string) (ep []EpisodeNum) {
 			switch id[0:2] {
 
 			case "EP":
-				episodeNum.Value = id[0:10] + "." + id[10:]
+				episodeNum.Value = id + "." + id
 
 			case "SH", "MV":
-				episodeNum.Value = id[0:10] + ".0000"
+				episodeNum.Value = id + ".0000"
 
 			default:
 				episodeNum.Value = id
