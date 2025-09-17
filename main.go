@@ -13,7 +13,7 @@ import (
 const AppName = "epgo"
 
 // Version : Version
-const Version = "3.0.1"
+const Version = "3.0.5"
 
 // Config : Config file (struct)
 var Config config
@@ -30,6 +30,7 @@ func main() {
 
 	flag.Parse()
 	Config2 = *config
+	showInfo("EPGo", fmt.Sprintf("Version %s", Version))
 	logger.Debug("epgo revamped", "Version", Version, "Forked", "By Chuchodavids")
 
 	if *h {
