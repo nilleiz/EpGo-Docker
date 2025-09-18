@@ -135,14 +135,21 @@ Files:
     Cache: config_cache.json
     XMLTV: config.xml
     The MovieDB cache file: imdb_image_cache.json
+Server:
+    Enable: false
+    Address: localhost
+    Port: "80"
 Options:
     Live and New icons: false
-    The MovieDB api key:  YOUR_KEY
-    Poster Aspect: all
     Schedule Days: 1
     Subtitle into Description: false
-    Use SchedulesDirect Links for images: true
     Insert credits tag into XML file: false
+    Images:
+        Download Images: false
+        Image Path: ""
+        The MovieDB:
+            Enable: false
+            Api Key: ""
     Rating:
         Insert rating tag into XML file: false
         Maximum rating entries. 0 for all entries: 1
@@ -161,14 +168,22 @@ Station:
 
 ```yaml
 Cache: /app/file.json  
-XMLTV: /app/file.xml  
+XMLTV: /app/xml  
 ```
 
-### Options: (Can be customized)
+### Server: (Can be customized)
 
 ```yaml
-Poster Aspect: all
+Enable: false
+Address: localhost
+Port: "80"
 ```
+
+-   **Enable**: `true` or `false` to enable or disable the image server.
+-   **Address**: The IP address or hostname for the server to listen on. Defaults to `localhost`.
+-   **Port**: The port for the server to listen on. Defaults to `80`.
+
+### Options: (Can be customized)
 
 **Some clients only use one image, even if there are several in the XMLTV file.**  
 
@@ -207,17 +222,26 @@ Alan zieht aus, da seine Freundin Kandi und er in Las Vegas eine Million Dollar 
 
 ---
 
+### Images: (Can be customized)
+
 ```yaml
-Use SchedulesDirect Links for images: false
+Download Images: false
+Image Path: ""
 ```
 
-Change to true to use schedule direct as show images as fallback from tmdb images.
+-   **Download Images**: `true` or `false`. If `true`, images will be downloaded to the `Image Path`. If `Image Path` is not set, it will default to a folder named `images`.
+-   **Image Path**: The path where the images will be downloaded.
 
-###### WARNINGS
+#### The MovieDB
 
-1. This will append the token to the images link. Not my fault. that is how schedules direct works
-1. Because tokens are valid for 24 hours only, you need to re-download the xmltv file everyday. This will be better paired with downloading only one day of EPG and using maybe a cron job to keep it updated
-1. If you download more than 500 images, schdulesdirect will rate block you. So, not great for big EPG (more than 100 channels ish)
+```yaml
+The MovieDB:
+    Enable: false
+    Api Key: ""
+```
+
+-   **Enable**: `true` or `false` to enable or disable The MovieDB as a fallback image source.
+-   **Api Key**: Your The MovieDB API key.
 
 ---
 

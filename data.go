@@ -57,6 +57,15 @@ func (sd *SD) Update(filename string) (err error) {
 
 	runtime.GC()
 
+	if Config.Server.Enable {
+		imagePath := Config.Options.Images.Path
+		if imagePath == "" {
+			imagePath = "images"
+		}
+		go StartServer(imagePath, Config.Server.Port)
+		select {}
+	}
+
 	return
 }
 

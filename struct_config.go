@@ -15,14 +15,26 @@ type config struct {
 		TmdbCacheFile string `yaml:"The MovieDB cache file"`
 	} `yaml:"Files"`
 
+	Server struct {
+		Enable  bool   `yaml:"Enable"`
+		Address string `yaml:"Address"`
+		Port    string `yaml:"Port"`
+	} `yaml:"Server"`
+
 	Options struct {
-		LiveIcons bool `yaml:"Live and New icons"`
-		TmdbApiKey              string `yaml:"The MovieDB api key"`
-		PosterAspect            string `yaml:"Poster Aspect"`
-		Schedule                int    `yaml:"Schedule Days"`
-		SubtitleIntoDescription bool   `yaml:"Subtitle into Description"`
-		Credits                 bool   `yaml:"Insert credits tag into XML file"`
-		Rating                  struct {
+		LiveIcons               bool `yaml:"Live and New icons"`
+		Schedule                int  `yaml:"Schedule Days"`
+		SubtitleIntoDescription bool `yaml:"Subtitle into Description"`
+		Credits                 bool `yaml:"Insert credits tag into XML file"`
+		Images                  struct {
+			Download bool   `yaml:"Download Images from Schedules Direct"`
+			Path     string `yaml:"Image Path"`
+			Tmdb     struct {
+				Enable bool   `yaml:"Enable"`
+				ApiKey string `yaml:"Api Key"`
+			} `yaml:"The MovieDB"`
+		} `yaml:"Images"`
+		Rating struct {
 			Guidelines          bool     `yaml:"Insert rating tag into XML file"`
 			MaxEntries          int      `yaml:"Maximum rating entries. 0 for all entries"`
 			Countries           []string `yaml:"Preferred countries. ISO 3166-1 alpha-3 country code. Leave empty for all systems"`

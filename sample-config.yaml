@@ -5,12 +5,20 @@ Files:
     Cache: config_cache.json
     XMLTV: config.xml
     The MovieDB cache file: config_tmdb_cache.json
+Server:
+    Enable: false
+    Address: localhost
+    Port: "80"
 Options:
-    The MovieDB api key: ""
-    Poster Aspect: all
     Schedule Days: 1
     Subtitle into Description: false
     Insert credits tag into XML file: false
+    Images:
+        Download Images: false
+        Image Path: ""
+        The MovieDB:
+            Enable: false
+            Api Key: ""
     Rating:
         Insert rating tag into XML file: false
         Maximum rating entries. 0 for all entries: 1

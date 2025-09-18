@@ -174,16 +174,19 @@ func getProgram(channel EPGoCache) (p []Programme) {
 
 			// Icon
 			var imageURL string
-			if Config.Options.TmdbApiKey != "" {
-				imageURL, err = tmdb.SearchItem(logger, pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.TmdbApiKey, Config.Files.TmdbCacheFile)
-				if err != nil {
-					logger.Error("could not connect to tmdb. check your api key", "error", err)
+			icons := Cache.GetIcon(s.ProgramID)
+			if len(icons) != 0 {
+				if Config.Options.Images.Download {
+					imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
+				} else {
+					imageURL = icons[0].Src
 				}
 			}
-			if imageURL == "" {
-				icons := Cache.GetIcon(s.ProgramID)
-				if len(icons) != 0 {
-					imageURL = icons[0].Src
+
+			if imageURL == "" && Config.Options.Images.Tmdb.Enable {
+				imageURL, err = tmdb.SearchItem(logger, pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.Images.Tmdb.ApiKey, Config.Files.TmdbCacheFile)
+				if err != nil {
+					logger.Error("could not connect to tmdb. check your api key", "error", err)
 				}
 			}
 			pro.Icon = []Icon{

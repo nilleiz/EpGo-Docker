@@ -187,9 +187,33 @@ func (c *config) Open() (err error) {
 		logger.Info("update config file", "filename", Config.File+".yaml")
 	}
 
-	if !bytes.Contains(data, []byte("The MovieDB")) {
+	if !bytes.Contains(data, []byte("The MovieDB:")) {
 		newOptions = true
-		Config.Options.TmdbApiKey = ""
+		Config.Options.Images.Tmdb.Enable = false
+		Config.Options.Images.Tmdb.ApiKey = ""
+	}
+
+	if !bytes.Contains(data, []byte("Images:")) {
+		newOptions = true
+		Config.Options.Images.Download = false
+		Config.Options.Images.Path = ""
+	}
+
+	if !bytes.Contains(data, []byte("Server:")) {
+		newOptions = true
+		Config.Server.Enable = false
+		Config.Server.Address = "localhost"
+		Config.Server.Port = "80"
+	}
+
+	if c.Server.Address == "" {
+		c.Server.Address = "localhost"
+		newOptions = true
+	}
+
+	if c.Server.Port == "" {
+		c.Server.Port = "80"
+		newOptions = true
 	}
 
 	if newOptions {
@@ -229,8 +253,12 @@ func (c *config) InitConfig() {
 	c.Files.XMLTV = fmt.Sprintf("%s.xml", c.File)
 	c.Files.TmdbCacheFile = fmt.Sprintf("%s_tmdb_cache.json", c.File)
 
+	// Server
+	c.Server.Enable = false
+	c.Server.Address = "localhost"
+	c.Server.Port = "80"
+
 	// Options
-	c.Options.PosterAspect = "all"
 	c.Options.Schedule = 7
 	c.Options.SubtitleIntoDescription = false
 	c.Options.Credits = false
@@ -239,6 +267,11 @@ func (c *config) InitConfig() {
 	Config.Options.Rating.CountryCodeAsSystem = false
 	Config.Options.Rating.MaxEntries = 1
 	Config.Options.LiveIcons = false
+	// Options images
+	c.Options.Images.Download = false
+	c.Options.Images.Path = ""
+	c.Options.Images.Tmdb.Enable = false
+	c.Options.Images.Tmdb.ApiKey = ""
 
 }
 

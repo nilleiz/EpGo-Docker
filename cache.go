@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -272,54 +275,66 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 
 func (c *cache) GetIcon(id string) (i []Icon) {
 
-	var aspects = []string{"2x3", "4x3", "3x4", "16x9"}
-	var uri string
-	switch Config.Options.PosterAspect {
-
-	case "all":
-		break
-
-	default:
-		aspects = []string{Config.Options.PosterAspect}
-	}
-
 	if m, ok := c.Metadata[id]; ok {
-		for _, aspect := range aspects {
-			var maxWidth, maxHeight int
-			var finalCategory string = ""
-			for _, icon := range m.Data {
-				if finalCategory == "" && (icon.Category == "Poster Art" || icon.Category == "Box Art" || icon.Category == "Banner-L1" || icon.Category == "Banner-L2") {
-					finalCategory = icon.Category
-				} else if finalCategory == "" && icon.Category == "VOD Art" {
-					finalCategory = icon.Category
-				}
-				if icon.Category != finalCategory {
-					continue
-				}
-
-				if icon.URI[0:7] != "http://" && icon.URI[0:8] != "https://" {
-					icon.URI = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s?token=%s", icon.URI, Token)
-				}
-
-				if icon.Aspect == aspect {
-
-					if icon.Width > maxWidth {
-						maxWidth = icon.Width
-						maxHeight = icon.Height
-						uri = icon.URI
-					}
-
-				}
-
-			}
-			if maxWidth > 0 {
-				i = append(i, Icon{Src: uri, Height: maxHeight, Width: maxWidth})
-			}
-
+		// Define preferences for categories and aspect ratios. Lower index = higher preference.
+		categoryPrefs := map[string]int{
+			"Poster Art":  0,
+			"Box Art":     1,
+			"Banner-L1":   2,
+			"Banner-L2":   3,
+			"VOD Art":     4, // Fallback category
+		}
+		aspectPrefs := map[string]int{
+			"16x9": 0,
+			"2x3":  1,
+			"4x3":  2,
+			"3x4":  3,
+			"2x1":  4,
+			"1x1":  5,
 		}
 
-	}
+		var bestIcon *Icon
+		bestScore := -1
 
+		for _, iconData := range m.Data {
+			catScore, catOK := categoryPrefs[iconData.Category]
+			if !catOK {
+				continue // Skip categories we don't care about
+			}
+
+			aspectScore, aspectOK := aspectPrefs[iconData.Aspect]
+			if !aspectOK {
+				continue // Skip aspect ratios we don't care about
+			}
+
+			// A lower score is better. We can combine scores to rank images.
+			// Prioritize category, then aspect ratio.
+			currentScore := catScore*10 + aspectScore
+
+			if bestScore == -1 || currentScore < bestScore || (currentScore == bestScore && iconData.Width > bestIcon.Width) {
+				// This is a better icon if:
+				// 1. It's the first valid one we've found.
+				// 2. Its score is better (lower) than the current best.
+				// 3. It has the same score but is a larger image.
+				bestScore = currentScore
+				
+				// Ensure URI is a full URL
+				uri := iconData.URI
+				if uri[0:7] != "http://" && uri[0:8] != "https://" {
+					uri = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s?token=%s", uri, Token)
+				}
+
+				bestIcon = &Icon{Src: uri, Height: iconData.Height, Width: iconData.Width}
+			}
+		}
+
+		if bestIcon != nil {
+			if Config.Options.Images.Download {
+				downloadImage(bestIcon.Src, id)
+			}
+			i = append(i, *bestIcon)
+		}
+	}
 	return
 }
 
@@ -639,22 +654,6 @@ func (c *cache) GetRating(id, countryCode string) (ra []Rating) {
 
 	}
 
-	/*
-	   var prepend = func(code, body, country string) {
-
-	     switch Config.Options.Rating.CountryCodeAsSystem {
-
-	     case true:
-	       ra = append([]Rating{{Value: code, System: country}}, ra...)
-
-	     case false:
-	       ra = append([]Rating{{Value: code, System: body}}, ra...)
-
-	     }
-
-	   }
-	*/
-
 	if p, ok := c.Program[id]; ok {
 
 		switch len(Config.Options.Rating.Countries) {
@@ -708,4 +707,51 @@ func (c *cache) GetRating(id, countryCode string) (ra []Rating) {
 	}
 
 	return
+}
+
+func downloadImage(imageURL, programID string) (string, error) {
+
+	folderImage := Config.Options.Images.Path
+
+	if Config.Options.Images.Path == "" {
+		folderImage = "images"
+	}
+
+	// Create the "images" folder if it doesn't exist
+	if _, err := os.Stat(folderImage); os.IsNotExist(err) {
+		err = os.MkdirAll(folderImage, 0755)
+		if err != nil {
+			return "", fmt.Errorf("failed to create images folder: %w", err)
+		}
+	}
+
+	// Extract filename from URL
+	filename := programID + ".jpg"
+	filePath := filepath.Join(folderImage, filename)
+	if _, err := os.Stat(filePath); err == nil {
+		return filePath, nil
+	}
+
+	resp, err := http.Get(imageURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to download image: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed to download image: %s", resp.Status)
+	}
+	defer resp.Body.Close()
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create image file: %w", err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to save image: %w", err)
+	}
+
+	return filePath, nil
+
 }

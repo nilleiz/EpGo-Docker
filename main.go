@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"log/slog"
 )
@@ -23,6 +24,7 @@ func main() {
 	var configure = flag.String("configure", "", "= Create or modify the configuration file. [filename.yaml]")
 	var config = flag.String("config", "", "= Get data from Schedules Direct with configuration file. [filename.yaml]")
 	var version = flag.Bool("version", false, "= Get version")
+	var serve = flag.String("serve", "", "= Start a local HTTP server to serve files from the specified directory. [directory:port]")
 
 	var h = flag.Bool("h", false, ": Show help")
 
@@ -57,5 +59,16 @@ func main() {
 		if err != nil {
 			logger.Error("unable to get data from Schedules Direct", "error", err)
 		}
+	}
+
+	if len(*serve) != 0 {
+		parts := strings.Split(*serve, ":")
+		if len(parts) != 2 {
+			logger.Error("Invalid serve argument. Use format [directory:port]", "argument", *serve)
+			os.Exit(1)
+		}
+		dir := parts[0]
+		port := parts[1]
+		StartServer(dir, port)
 	}
 }
