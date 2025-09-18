@@ -31,16 +31,16 @@ func (sd *SD) Update(filename string) (err error) {
 	// loads default functions and variables
 	err = sd.Init()
 	if err != nil {
-		return
+		return err
 	}
 	err = sd.Login()
 	if err !=nil {
-		return
+		return err
 	}
 
 	err = sd.Status()
 	if err != nil{
-		return
+		return err
 	}
 
 	sd.GetData()
@@ -49,7 +49,7 @@ func (sd *SD) Update(filename string) (err error) {
 
 	err = CreateXMLTV(filename)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to create the XMLTV file", "error", err)
 		return
 	}
 
@@ -69,13 +69,12 @@ func (sd *SD) GetData() {
 
 	err = Cache.Open()
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to open the cache", "error", err)
 		return
 	}
 	Cache.Init()
 
 	// Channel list
-	sd.Status()
 	Cache.Channel = make(map[string]EPGoCache)
 
 	var lineup []string
@@ -96,7 +95,7 @@ func (sd *SD) GetData() {
 	}
 
 	// Schedule
-	showInfo("EPGo", fmt.Sprintf("Download Schedule: %d Day(s)", Config.Options.Schedule))
+	logger.Info("Download Schedule", "days", Config.Options.Schedule)
 
 	var limit = 5000
 
@@ -119,7 +118,7 @@ func (sd *SD) GetData() {
 
 			sd.Req.Data, err = json.Marshal(channels)
 			if err != nil {
-				ShowErr(err)
+				logger.Error("unable to marshal the JSON", "error", err)
 				return
 			}
 
@@ -152,7 +151,7 @@ func (sd *SD) GetData() {
 	var allIDs = Cache.GetAllProgramIDs()
 	var programs = make([]interface{}, 0)
 
-	showInfo("EPGo", fmt.Sprintf("Download Program Informations: New: %d / Cached: %d", len(programIds), len(allIDs)-len(programIds)))
+	logger.Info("Download Program Informations", "new", len(programIds), "cached", len(allIDs)-len(programIds))
 
 	for _, t := range types {
 
@@ -162,7 +161,7 @@ func (sd *SD) GetData() {
 			sd.Req.Call = "metadata"
 			programIds = Cache.GetRequiredMetaIDs()
 			limit = 500
-			showInfo("EPGo", fmt.Sprintf("Download missing Metadata: %d ", len(programIds)))
+			logger.Info("Download missing Metadata", "count", len(programIds))
 
 		case "programs":
 
@@ -182,13 +181,13 @@ func (sd *SD) GetData() {
 
 				sd.Req.Data, err = json.Marshal(programs)
 				if err != nil {
-					ShowErr(err)
+					logger.Error("unable to marshal the JSON", "error", err)
 					return
 				}
 
 				err := sd.Program()
 				if err != nil {
-					ShowErr(err)
+					logger.Error("unable to download the programs", "error", err)
 				} else {
 					wg.Add(1)
 
@@ -214,7 +213,7 @@ func (sd *SD) GetData() {
 
 	err = Cache.Save()
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to save the JSON", "error", err)
 		return
 	}
 }

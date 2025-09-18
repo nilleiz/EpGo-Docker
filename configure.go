@@ -151,8 +151,7 @@ func (c *config) Open() (err error) {
 
 		Config.Options.Credits = true
 
-		showInfo("EPGo", fmt.Sprintf("%s (credits) [%s]", getMsg(0300), Config.File))
-
+		logger.Info("update config file", "filename", Config.File+".yaml")
 	}
 
 	// Rating tag
@@ -165,7 +164,7 @@ func (c *config) Open() (err error) {
 		Config.Options.Rating.CountryCodeAsSystem = false
 		Config.Options.Rating.MaxEntries = 1
 
-		showInfo("EPGo", fmt.Sprintf("%s (rating) [%s]", getMsg(0300), Config.File))
+		logger.Info("update config file", "filename", Config.File+".yaml")
 
 	}
 
@@ -185,14 +184,12 @@ func (c *config) Open() (err error) {
 		newOptions = true
 		Config.Options.SDDownloadErrors = false
 
-		showInfo("EPGo", fmt.Sprintf("%s (SD errors) [%s]", getMsg(0300), Config.File))
-
+		logger.Info("update config file", "filename", Config.File+".yaml")
 	}
 
 	if !bytes.Contains(data, []byte("The MovieDB")) {
 		newOptions = true
 		Config.Options.TmdbApiKey = ""
-		logger.Debug("added tmdb api key value")
 	}
 
 	if newOptions {

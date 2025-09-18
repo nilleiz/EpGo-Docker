@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 
@@ -21,7 +20,7 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 
 	err = Cache.Open()
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to open the cache", "error", err)
 		return
 	}
 
@@ -61,7 +60,7 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 
 	err = sd.Lineups()
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to get lineups", "error", err)
 		return
 	}
 
@@ -142,7 +141,7 @@ func (e *Entry) manageChannels(sd *SD) (err error) {
 			if err == promptui.ErrEOF { // Check for Ctrl+D (EOF)
 				break
 			}
-			log.Printf("Prompt failed %v\n", err)
+			logger.Error("prompt failed", "error", err)
 			return err
 		}
 
