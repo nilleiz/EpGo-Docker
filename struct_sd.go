@@ -1,6 +1,8 @@
 package main
 
-import "time"
+import (
+	"time"
+)
 
 type SDStatus struct {
 	Message string `json:"message"`

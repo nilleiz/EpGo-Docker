@@ -1,10 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"log"
-	"os"
 	"sort"
 	"strconv"
 )
@@ -61,7 +58,6 @@ func getMsg(code int) (msg string) {
 // Show : Show menu on screen
 func (m *Menu) Show() (selection int) {
 
-	log.SetOutput(os.Stdout)
 	if len(m.Entry) == 0 {
 		return
 	}
@@ -125,30 +121,8 @@ func (m *Menu) Show() (selection int) {
 
 		}
 
-		err = errors.New("invalid Input")
-		ShowErr(err)
+		logger.Error("invalid Input", "error", err)
 		fmt.Println()
 
 	}
-}
-
-// ShowInfo : Show info on screen
-func showInfo(key, msg string) {
-	log.SetOutput(os.Stdout)
-	switch len(key) {
-
-	case 1:
-		msg = fmt.Sprintf("[%s    ] %s", key, msg)
-	case 2:
-		msg = fmt.Sprintf("[%s   ] %s", key, msg)
-	case 3:
-		msg = fmt.Sprintf("[%s  ] %s", key, msg)
-	case 4:
-		msg = fmt.Sprintf("[%s ] %s", key, msg)
-	case 5:
-		msg = fmt.Sprintf("[%s] %s", key, msg)
-
-	}
-
-	log.Println(msg)
 }

@@ -31,16 +31,11 @@ func (c *cache) Init() {
 }
 
 func (c *cache) Remove() {
-
 	if len(Config.Files.Cache) != 0 {
-
-		showInfo("EPGo", fmt.Sprintf("%s [%s]", getMsg(0301), Config.Files.Cache))
+		logger.Info("Remove Cache File", "filename", Config.Files.Cache)
 		os.RemoveAll(Config.Files.Cache)
-
 		c.Init()
-
 	}
-
 }
 
 func (c *cache) AddStations(data *[]byte, lineup string) {
@@ -53,7 +48,7 @@ func (c *cache) AddStations(data *[]byte, lineup string) {
 
 	err := json.Unmarshal(*data, &sdData)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to unmarshal the JSON", "error", err)
 		return
 	}
 
@@ -88,7 +83,7 @@ func (c *cache) AddSchedule(data *[]byte) {
 
 	err := json.Unmarshal(*data, &sdData)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to unmarshal the JSON", "error", err)
 		return
 	}
 
@@ -129,7 +124,7 @@ func (c *cache) AddProgram(gzip *[]byte, wg *sync.WaitGroup) {
 
 	b, err := gUnzip(*gzip)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to unzip programs", "error", err)
 		return
 	}
 
@@ -138,7 +133,7 @@ func (c *cache) AddProgram(gzip *[]byte, wg *sync.WaitGroup) {
 
 	err = json.Unmarshal(b, &sdData)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to unmarshal the JSON", "error", err)
 		return
 	}
 
@@ -176,7 +171,7 @@ func (c *cache) AddMetadata(gzip *[]byte, wg *sync.WaitGroup) {
 
 	b, err := gUnzip(*gzip)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to unzip metadata", "error", err)
 		return
 	}
 
@@ -186,7 +181,7 @@ func (c *cache) AddMetadata(gzip *[]byte, wg *sync.WaitGroup) {
 
 	err = json.Unmarshal(b, &tmp)
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to unmarshal the JSON", "error", err)
 		return
 	}
 
@@ -199,18 +194,17 @@ func (c *cache) AddMetadata(gzip *[]byte, wg *sync.WaitGroup) {
 		if err != nil {
 
 			var sdError SDError
-			var saveError = err
 			err = json.Unmarshal(jsonByte, &sdError)
 			if err == nil {
 
 				if Config.Options.SDDownloadErrors {
 					err = fmt.Errorf("%s [SD API Error Code: %d] Program ID: %s", sdError.Data.Message, sdError.Data.Code, sdError.ProgramID)
-					ShowErr(err)
+					logger.Error("unable to unmarshal the JSON", "error", err)
 				}
 
 			} else {
 				if Config.Options.SDDownloadErrors {
-					ShowErr(fmt.Errorf("unable to unmarshal the JSON.  Maybe a type compatability error.  %s", saveError.Error()))
+					logger.Error("unable to unmarshal the JSON", "error", err)
 				}
 			}
 
@@ -369,7 +363,7 @@ func (c *cache) Save() (err error) {
 func (c *cache) CleanUp() {
 
 	var count int
-	showInfo("EPGo", fmt.Sprintf("Clean up Cache [%s]", Config.Files.Cache))
+	logger.Info("Clean up Cache", "filename", Config.Files.Cache)
 
 	var programIDs = c.GetAllProgramIDs()
 
@@ -388,11 +382,11 @@ func (c *cache) CleanUp() {
 	c.Channel = make(map[string]EPGoCache)
 	c.Schedule = make(map[string][]EPGoCache)
 
-	showInfo("EPGo", fmt.Sprintf("Deleted Program Informations: %d", count))
+	logger.Info("Clean up Cache", "count", count)
 
 	err := c.Save()
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to save the JSON", "error", err)
 		return
 	}
 }

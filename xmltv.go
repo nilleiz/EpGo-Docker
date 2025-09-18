@@ -41,7 +41,7 @@ func CreateXMLTV(filename string) (err error) {
 
 	var he = func(err error) {
 		if err != nil {
-			ShowErr(err)
+			logger.Error("unable to encode the XML", "error", err)
 			return
 		}
 	}
@@ -59,11 +59,11 @@ func CreateXMLTV(filename string) (err error) {
 	Cache.Init()
 	err = Cache.Open()
 	if err != nil {
-		ShowErr(err)
+		logger.Error("unable to open the cache", "error", err)
 		return
 	}
 
-	showInfo("EPGo", fmt.Sprintf("Create XMLTV File [%s]", Config.Files.XMLTV))
+	logger.Info("Create XMLTV File", "filename", Config.Files.XMLTV)
 
 	he(enc.EncodeToken(xml.StartElement{Name: xml.Name{Local: "tv"}, Attr: []xml.Attr{generator, source, info}}))
 
@@ -127,7 +127,7 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			timeLayout := "2006-01-02 15:04:05 +0000 UTC"
 			t, err := time.Parse(timeLayout, s.AirDateTime.Format(timeLayout))
 			if err != nil {
-				ShowErr(err)
+				logger.Error("unable to parse the time", "error", err)
 				return
 			}
 
@@ -155,7 +155,7 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			}
 
 			// Sub Title
-			pro.SubTitle = Cache.GetSubTitle(s.ProgramID, lang)
+			pro.SubTitle = Cache.GetSubTitle(s.ProgramID, pro.SubTitle.Value)
 
 			// Description
 			pro.Desc = Cache.GetDescs(s.ProgramID, pro.SubTitle.Value)
@@ -175,9 +175,9 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			// Icon
 			var imageURL string
 			if Config.Options.TmdbApiKey != "" {
-				imageURL, err = tmdb.SearchItem(pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.TmdbApiKey, Config.Files.TmdbCacheFile)
+				imageURL, err = tmdb.SearchItem(logger, pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.TmdbApiKey, Config.Files.TmdbCacheFile)
 				if err != nil {
-					ShowErr(fmt.Errorf("could not connect to tmdb. check your api key"))
+					logger.Error("could not connect to tmdb. check your api key", "error", err)
 				}
 			}
 			if imageURL == "" {

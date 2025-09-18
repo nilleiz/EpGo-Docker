@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -85,7 +86,7 @@ type ShowDetails struct {
 
 
 // https://api.themoviedb.org/3/search/multi?query=two%20towers&include_adult=false&language=en-US&page=1
-func SearchItem(searchTerm, mediaType, tmdbApiKey, imageCacheFile string) (string, error) {
+func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCacheFile string) (string, error) {
 	// 1. Check the cache FIRST
 	var tmdbUrl string
 	searchTerm = strings.ReplaceAll(searchTerm, "ᴺᵉʷ", "")
@@ -161,7 +162,7 @@ func SearchItem(searchTerm, mediaType, tmdbApiKey, imageCacheFile string) (strin
 	// 3. Add to cache AFTER successful TMDB request
 	err = addImageToCache(searchTerm+"-"+mediaType, posterPath, imageCacheFile) // Use combined key
 	if err != nil {
-		fmt.Println("Error adding to cache:", err) // Log the error, but don't stop execution
+		logger.Error("error adding to cache", "error", err) // Log the error, but don't stop execution
 	}
 
 	return fmt.Sprintf(tmdbImageUrl, posterPath), nil

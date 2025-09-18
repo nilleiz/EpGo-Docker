@@ -41,8 +41,6 @@ func (sd *SD) Init() (err error) {
 			return
 		}
 
-		logger.Debug("ScheduleDirect", "Login", sd.Resp.Login.Message)
-
 		sd.Token = sd.Resp.Login.Token
 		Token = sd.Token
 		return
@@ -69,10 +67,9 @@ func (sd *SD) Init() (err error) {
 			return fmt.Errorf("schdule Direct is down: %w", err)
 		}
 
-		showInfo("SD", fmt.Sprintf("Account Expires: %v", sd.Resp.Status.Account.Expires))
-		showInfo("SD", fmt.Sprintf("Lineups: %d / %d", len(sd.Resp.Status.Lineups), sd.Resp.Status.Account.MaxLineups))
-
-		showInfo("EPGo", fmt.Sprintf("Channels: %d", len(Config.Station)))
+		logger.Info("", "Expiration", sd.Resp.Status.Account.Expires)
+		logger.Info("", "Lineups", len(sd.Resp.Status.Lineups), "Limit", sd.Resp.Status.Account.MaxLineups)
+		logger.Info("", "Channels", len(Config.Station))
 
 		return
 	}
@@ -122,7 +119,7 @@ func (sd *SD) Init() (err error) {
 		}
 
 		if len(sd.Resp.Lineup.Message) != 0 {
-			showInfo("SD", sd.Resp.Lineup.Message)
+			logger.Info("", "msg", sd.Resp.Lineup.Message)
 		}
 
 		return
@@ -193,8 +190,7 @@ func (sd *SD) Connect() (err error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		ShowErr(err)
-		logger.Error("Could not read response body from Schedules direct token retrieval method")
+		logger.Error("Could not read response body from Schedules direct token retrieval method", "error", err)
 		return
 	}
 
@@ -205,14 +201,14 @@ func (sd *SD) Connect() (err error) {
 	case "login":
 		err = json.Unmarshal(body, &sd.Resp.Login)
 		if err != nil {
-			ShowErr(err)
+			logger.Error("could not unmarshal login response", "error", err)
 			return err
 		}
 		if sd.Resp.Login.Code == 4009 {
 			return fmt.Errorf(sd.Resp.Login.Message)
 		}
 		t := time.Unix(sd.Resp.Login.TokenExpires, 0)
-		showInfo("SD", fmt.Sprintf("Token Expires: %v", t))
+		logger.Info("", "Token Expires", t)
 		if t.Before(time.Now()) {
 			logger.Error("Token has expired")
 			var data map[string]interface{}
@@ -235,7 +231,7 @@ func (sd *SD) Connect() (err error) {
 	case "status":
 		err = json.Unmarshal(body, &sd.Resp.Status)
 		if err != nil {
-			ShowErr(err)
+			logger.Error("could not unmarshal status response", "error", err)
 		}
 
 		sdStatus.Code = sd.Resp.Status.Code
@@ -244,19 +240,19 @@ func (sd *SD) Connect() (err error) {
 	case "countries":
 		err = json.Unmarshal(body, &sd.Resp.Countries)
 		if err != nil {
-			ShowErr(err)
+			logger.Error("could not unmarshal countries response", "error", err)
 		}
 
 	case "headends":
 		err = json.Unmarshal(body, &sd.Resp.Headend)
 		if err != nil {
-			ShowErr(err)
+			logger.Error("could not unmarshal headends response", "error", err)
 		}
 
 	case "lineups":
 		err = json.Unmarshal(body, &sd.Resp.Lineup)
 		if err != nil {
-			ShowErr(err)
+			logger.Error("could not unmarshal lineups response", "error", err)
 		}
 		sd.Resp.Body = body
 
@@ -270,7 +266,6 @@ func (sd *SD) Connect() (err error) {
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("SchedulesDirect request returned a non-200 code", "http", resp.Status)
-		fmt.Println(string(sd.Req.Data))
 		return fmt.Errorf("status code non-200: %v", resp.Status)
 	}
 
