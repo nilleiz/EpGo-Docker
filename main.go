@@ -10,10 +10,10 @@ import (
 )
 
 // AppName : App name
-const AppName = "epgo"
 
 // Version : Version
-const Version = "3.0.5"
+const Version = "v3.2.1"
+const AppName = "epgo " + Version
 
 // Config : Config file (struct)
 var Config config

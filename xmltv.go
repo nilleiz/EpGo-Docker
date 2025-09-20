@@ -22,8 +22,8 @@ func CreateXMLTV(filename string) (err error) {
 	Config.File = strings.TrimSuffix(filename, filepath.Ext(filename))
 
 	var generator xml.Attr
-	generator.Name = xml.Name{Local: AppName}
-	generator.Value = AppName
+	generator.Name = xml.Name{Local: "EPGo"}
+	generator.Value = Version
 
 	var source xml.Attr
 	source.Name = xml.Name{Local: "source-info-name"}
@@ -72,7 +72,7 @@ func CreateXMLTV(filename string) (err error) {
 
 		var xmlCha channel // struct_config.go
 
-		xmlCha.ID = fmt.Sprintf("%s.%s.schedulesdirect.org", AppName, cache.StationID)
+		xmlCha.ID = fmt.Sprintf("%s.schedulesdirect.org", cache.StationID)
 		xmlCha.Icon = cache.getLogo()
 		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Callsign})
 		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Name})
@@ -121,7 +121,7 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			var countryCode = Config.GetLineupCountry(channel.StationID)
 
 			// Channel ID
-			pro.Channel = fmt.Sprintf("%s.%s.schedulesdirect.org", AppName, channel.StationID)
+			pro.Channel = fmt.Sprintf("%s.schedulesdirect.org", channel.StationID)
 
 			// Start and Stop time
 			timeLayout := "2006-01-02 15:04:05 +0000 UTC"
