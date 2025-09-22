@@ -1,0 +1,87 @@
+name: Development Release
+
+on:
+  push:
+    branches:
+      - "development"
+
+jobs:
+  build:
+    name: Build for Development
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.21']
+        os_arch:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Set binary and archive names
+        id: set_names
+        run: |
+          if [ "${{ matrix.os_arch.goos }}" == "windows" ]; then
+            echo "binary_name=epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}.exe" >> $GITHUB_OUTPUT
+            echo "archive_name=epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}.zip" >> $GITHUB_OUTPUT
+          else
+            echo "binary_name=epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}" >> $GITHUB_OUTPUT
+            echo "archive_name=epgo_${{ matrix.os_arch.goos }}_${{ matrix.os_arch.goarch }}.tar.gz" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build project
+        run: |
+          GOOS=${{ matrix.os_arch.goos }} GOARCH=${{ matrix.os_arch.goarch }} go build -ldflags="-s -w" -o ${{ steps.set_names.outputs.binary_name }}
+
+      - name: Archive binary
+        run: |
+          if [ "${{ matrix.os_arch.goos }}" == "windows" ]; then
+            zip ${{ steps.set_names.outputs.archive_name }} ${{ steps.set_names.outputs.binary_name }}
+          else
+            tar -czvf ${{ steps.set_names.outputs.archive_name }} ${{ steps.set_names.outputs.binary_name }}
+          fi
+      - name: Upload artifact for ${{ matrix.os_arch.goos }}-${{ matrix.os_arch.goarch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: epgo-${{ matrix.os_arch.goos }}-${{ matrix.os_arch.goarch }}
+          path: ${{ steps.set_names.outputs.archive_name }}
+
+  create_dev_release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: epgo-builds
+
+      - name: Delete previous development release
+        run: gh release delete development -y || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Development Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: development
+          name: "Development Build"
+          body: "This is a pre-release build from the development branch. It may be unstable."
+          prerelease: true
+          files: |
+            epgo-builds/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
