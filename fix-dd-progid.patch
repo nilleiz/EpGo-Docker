@@ -1,0 +1,31 @@
+--- a/cache.go
++++ b/cache.go
+@@ -312,11 +312,12 @@ func (c *cache) GetEpisodeNum(id string) (ep []EpisodeNum) {
+-        if len(ep) == 0 {
+-            var episodeNum EpisodeNum
+-
+-            switch id[0:2] {
+-            case "EP":
+-                episodeNum.Value = id + "." + id
+-            case "SH", "MV":
+-                episodeNum.Value = id + ".0000"
+-            default:
+-                episodeNum.Value = id
+-            }
+-
+-            episodeNum.System = "dd_progid"
+-            ep = append(ep, episodeNum)
+-        }
++        if len(ep) == 0 {
++            var episodeNum EpisodeNum
++
++            switch id[0:2] {
++            case "EP", "SH", "MV":
++                episodeNum.Value = id + ".0000"
++            default:
++                episodeNum.Value = id
++            }
++
++            episodeNum.System = "dd_progid"
++            ep = append(ep, episodeNum)
++        }
