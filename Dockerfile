@@ -3,9 +3,8 @@ FROM golang:1.22-alpine AS builder
 
 RUN apk add --no-cache git
 WORKDIR /src
-#ARG VERSION=v3.2.1
-RUN git clone https://github.com/nilleiz/EpGo.git .
-#RUN git checkout ${VERSION}
+# Clone the specific branch directly into the current directory
+RUN git clone --branch docker-with-progid-fix https://github.com/nilleiz/EpGo.git .
 RUN CGO_ENABLED=0 go build -o /epgo .
 
 # --- Build the 'nextrun' utility in an isolated directory ---
