@@ -2,6 +2,101 @@
 
 subredit: [epgo](https://www.reddit.com/r/EpGo/)
 
+## EoGo-Docker
+
+# EpGo Docker Image
+
+A robust, secure, and multi-arch Docker image for **[EpGo](https://github.com/Chuchodavids/EpGo)**, a command-line tool for downloading television listings from Schedules Direct.
+
+This image is built from source, ensuring compatibility with any Docker host architecture. It includes an intelligent entrypoint script to handle initial configuration and can be run either on a cron schedule or as a one-time task.
+
+---
+
+## ✅ Features
+
+* **Multi-Arch**: Built from source to run on any Docker host (amd64, arm64, etc.).
+* **Flexible Execution**: Run `epgo` on a cron schedule or as a single, one-off task.
+* **Secure**: Runs the application as a non-root `app` user.
+* **Auto-Initialization**: Creates a default `config.yaml` on the first run.
+* **Small Footprint**: Uses a multi-stage build to create a minimal final image.
+
+---
+
+## 🚀 Quick Start
+
+This image is controlled via environment variables in your `docker-compose.yaml` file.
+
+1.  Create a directory for your project:
+    ```bash
+    mkdir epgo-stack
+    cd epgo-stack
+    ```
+
+2.  Create a `docker-compose.yaml` file with the following content. **Remember to **choose one execution mode**.
+
+    ```yaml
+    # docker-compose.yaml
+    services:
+      epgo:
+        image: nillivanilli0815/epgo:latest
+        container_name: epgo
+        environment:
+          - TZ=America/Chicago
+          # --- CHOOSE ONE EXECUTION MODE ---
+
+          # Option 1: Run on a schedule (e.g., every day at 2:00 AM)
+          # The container will stay running as a cron daemon.
+          - CRON_SCHEDULE=0 2 * * *
+
+          # Option 2: Run just once and then stop the container.
+          # - RUN_ONCE=true
+
+        volumes:
+          # This maps a local folder to the container for persistent data
+          - ./epgo_data:/app
+        
+        # For CRON_SCHEDULE, 'unless-stopped' is recommended.
+        # For RUN_ONCE, you might change this to 'no' if you don't want it to restart.
+        restart: unless-stopped
+    ```
+
+3.  Start the container:
+    ```bash
+    docker compose up -d
+    ```
+
+---
+
+## ⚙️ Execution Modes
+
+You must set one of the following environment variables. `RUN_ONCE` takes priority if both are set.
+
+### Cron Schedule Mode
+Set the `CRON_SCHEDULE` variable to run `epgo` on a schedule. The container will run continuously as a cron daemon. Any output from `epgo` will be sent to the container's logs.
+
+* **Example**: `CRON_SCHEDULE: "0 2 * * *"` runs the task every day at 2:00 AM.
+
+### Run Once Mode
+Set `RUN_ONCE: "true"` to execute the `epgo` command one time. The container will exit after the task is complete.
+
+* **Note on `restart` policy**: If you use `RUN_ONCE` with `restart: unless-stopped`, the container will run, stop, and then immediately restart, creating a loop. For a true one-time run, you should change the restart policy to `restart: "no"`.
+
+---
+
+## 🔧 Interactive Configuration
+
+To use the tool's built-in interactive configuration wizard, run the following command. This will start a temporary container to guide you through the setup.
+
+```bash
+docker compose run --rm epgo epgo -configure /app/config.yaml
+```
+
+
+## ⚠️ A Note on Permissions
+The entrypoint script will automatically change the ownership of the files in your host directory (./epgo_data) to the app user from inside the container. This may cause the folder on your host to appear to be owned by a different user (e.g., dhcpcd or 100). This is expected and is required for the non-root user in the container to be able to write the config and XMLTV files.
+
+# Original README
+
 ## Features
 
 - Cache function to download only new EPG data
