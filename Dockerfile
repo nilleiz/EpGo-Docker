@@ -5,8 +5,8 @@ FROM golang:1.22-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /src
 # Clone the specific branch directly into the current directory
-[cite_start]RUN git clone --branch docker-with-progid-fix https://github.com/nilleiz/EpGo-Docker/.git . [cite: 4]
-[cite_start]RUN CGO_ENABLED=0 go build -o /epgo . [cite: 5]
+RUN git clone --branch docker-with-progid-fix https://github.com/nilleiz/EpGo-Docker/.git .
+RUN CGO_ENABLED=0 go build -o /epgo .
 
 # --- Build the 'nextrun' utility in an isolated directory ---
 RUN mkdir /build-helper
