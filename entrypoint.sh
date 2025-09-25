@@ -6,24 +6,34 @@ set -e
 PUID=${PUID:-1001}
 PGID=${PGID:-1001}
 
-# Create a group and user with the specified IDs
-echo "Creating user and group with PUID=${PUID} and PGID=${PGID}"
-addgroup -g ${PGID} -S app
-adduser -u ${PUID} -G app -S -h /app app
+echo "Ensuring user with PUID=${PUID} and group with PGID=${PGID} exists..."
+
+# Check if a group with the specified PGID already exists. If not, create it.
+if ! getent group ${PGID} >/dev/null; then
+    echo "Group with GID ${PGID} does not exist. Creating new group 'app'..."
+    addgroup -g ${PGID} -S app
+fi
+GROUP_NAME=$(getent group ${PGID} | cut -d: -f1)
+
+# Check if a user with the specified PUID already exists. If not, create it.
+if ! getent passwd ${PUID} >/dev/null; then
+    echo "User with UID ${PUID} does not exist. Creating new user 'app'..."
+    adduser -u ${PUID} -G "${GROUP_NAME}" -S -h /app app
+fi
 
 # --- Initial Setup ---
-chown app:app /app
+chown "${PUID}:${PGID}" /app
 
 CONFIG_FILE="/app/config.yaml"
 DEFAULT_CONFIG_SRC="/usr/local/share/sample-config.yaml"
 
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Config not found in volume. Copying default config..."
-    su-exec app:app cp "$DEFAULT_CONFIG_SRC" "$CONFIG_FILE"
+    su-exec "${PUID}:${PGID}" cp "$DEFAULT_CONFIG_SRC" "$CONFIG_FILE"
 fi
 
 # --- Execution Logic ---
-EPGO_CMD="/sbin/su-exec app:app /usr/bin/epgo -config /app/config.yaml"
+EPGO_CMD="/sbin/su-exec ${PUID}:${PGID} /usr/bin/epgo -config /app/config.yaml"
 
 # Case 1: RUN_ONCE is set to "true"
 if [ "${RUN_ONCE}" = "true" ]; then
