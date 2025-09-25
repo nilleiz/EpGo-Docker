@@ -33,7 +33,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # --- Execution Logic ---
-EPGO_CMD="/sbin/su-exec ${PUID}:${PGID} /usr/bin/epgo -config /app/config.yaml"
+# Modified command to ensure the working directory is always /app
+EPGO_CMD="/sbin/su-exec ${PUID}:${PGID} sh -c 'cd /app && /usr/bin/epgo -config /app/config.yaml'"
 
 # Case 1: RUN_ONCE is set to "true"
 if [ "${RUN_ONCE}" = "true" ]; then
