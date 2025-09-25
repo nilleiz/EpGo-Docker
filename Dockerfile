@@ -1,11 +1,10 @@
-# Dockerfile
 # Stage 1: The "Builder"
 FROM golang:1.22-alpine AS builder
 
 RUN apk add --no-cache git
 WORKDIR /src
 # Clone the specific branch directly into the current directory
-RUN git clone --branch docker-with-progid-fix https://github.com/nilleiz/EpGo-Docker.git .
+RUN git clone --branch docker-with-progid-fix https://github.com/nilleiz/EpGo-Docker/.git .
 RUN CGO_ENABLED=0 go build -o /epgo .
 
 # --- Build the 'nextrun' utility in an isolated directory ---
@@ -22,11 +21,11 @@ RUN apk add --no-cache tzdata su-exec dcron
 WORKDIR /app
 
 COPY --from=builder /epgo /usr/bin/epgo
+# Copy the new 'nextrun' utility from the builder stage
 COPY --from=builder /nextrun /usr/local/bin/nextrun
 COPY --from=builder /src/sample-config.yaml /usr/local/share/sample-config.yaml
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# User creation is now handled by the entrypoint script at runtime
 ENTRYPOINT ["entrypoint.sh"]
