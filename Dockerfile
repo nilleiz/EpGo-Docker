@@ -4,7 +4,7 @@ FROM golang:1.22-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /src
 # Clone the specific branch directly into the current directory
-RUN git clone --branch docker-with-progid-fix https://github.com/nilleiz/EpGo-Docker.git .
+RUN git clone --branch add-back-aspect https://github.com/nilleiz/EpGo-Docker.git .
 
 # --- Isolate and Build the 'nextrun' utility FIRST ---
 RUN mkdir /build-helper
