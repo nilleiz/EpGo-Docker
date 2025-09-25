@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# --- User/Group Setup ---
+# Set defaults for PUID and PGID if they are not provided
+PUID=${PUID:-1001}
+PGID=${PGID:-1001}
+
+# Create a group and user with the specified IDs
+echo "Creating user and group with PUID=${PUID} and PGID=${PGID}"
+addgroup -g ${PGID} -S app
+adduser -u ${PUID} -G app -S -h /app app
+
 # --- Initial Setup ---
 chown app:app /app
 
@@ -26,7 +36,6 @@ if [ "${RUN_ONCE}" = "true" ]; then
 elif [ -n "${CRON_SCHEDULE}" ]; then
     echo "CRON_SCHEDULE is set. Configuring cron job..."
     
-    # Clean the cron schedule by removing any surrounding quotes
     CLEAN_SCHEDULE=$(echo "${CRON_SCHEDULE}" | sed -e 's/^"//' -e 's/"$//')
 
     echo "${CLEAN_SCHEDULE} ${EPGO_CMD} >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/crontabs/root

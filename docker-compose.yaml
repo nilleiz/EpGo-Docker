@@ -1,15 +1,19 @@
 services:
-  epgo:
-    container_name: epgo
-    build:
-      context: .
-      args:
-        # Or amd64
-        - TARGETARCH=arm64
-    environment:
-      - TZ=America/Chicago
-    volumes:
-      # Assumes config.yaml is in the same directory as this docker-compose.yaml
-      - ./config.yaml:/app/config.yaml
-    command: -config /app/config.yaml
-    restart: never
+      epgo:
+        # ‼ IMPORTANT: Change this to your Docker Hub image name ‼
+        image: yourusername/epgo:latest
+        container_name: epgo
+        environment:
+          - TZ=America/Chicago
+          - PUID=1000 # Replace with your user ID from the 'id' command
+          - PGID=1000 # Replace with your group ID from the 'id' command
+
+          # --- CHOOSE ONE EXECUTION MODE ---
+          - CRON_SCHEDULE=0 2 * * * # Example: Run daily at 2:00 AM
+          # - RUN_ONCE=true
+
+        volumes:
+          # This maps a local folder to the container for persistent data
+          - ./epgo_data:/app
+        
+        restart: unless-stopped

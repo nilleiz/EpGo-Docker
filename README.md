@@ -32,31 +32,28 @@ This image is controlled via environment variables in your `docker-compose.yaml`
     cd epgo-stack
     ```
 
-2.  Create a `docker-compose.yaml` file with the following content. **Remember to **choose one execution mode**.
+2.  Create a `docker-compose.yaml` file with the following content. **Remember to change `yourusername/epgo:latest`** to your image name.
 
     ```yaml
     # docker-compose.yaml
     services:
       epgo:
-        image: nillivanilli0815/epgo:latest
+        # ‼ IMPORTANT: Change this to your Docker Hub image name ‼
+        image: yourusername/epgo:latest
         container_name: epgo
         environment:
           - TZ=America/Chicago
+          - PUID=1000 # Replace with your user ID from the 'id' command
+          - PGID=1000 # Replace with your group ID from the 'id' command
+
           # --- CHOOSE ONE EXECUTION MODE ---
-
-          # Option 1: Run on a schedule (e.g., every day at 2:00 AM)
-          # The container will stay running as a cron daemon.
-          - CRON_SCHEDULE=0 2 * * *
-
-          # Option 2: Run just once and then stop the container.
+          - CRON_SCHEDULE=0 2 * * * # Example: Run daily at 2:00 AM
           # - RUN_ONCE=true
 
         volumes:
           # This maps a local folder to the container for persistent data
           - ./epgo_data:/app
         
-        # For CRON_SCHEDULE, 'unless-stopped' is recommended.
-        # For RUN_ONCE, you might change this to 'no' if you don't want it to restart.
         restart: unless-stopped
     ```
 
