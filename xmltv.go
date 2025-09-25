@@ -175,13 +175,29 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			// Icon
 			var imageURL string
 			icons := Cache.GetIcon(s.ProgramID)
+
+			// filter by aspect if configured
 			if len(icons) != 0 {
+				var selected Icon
+				aspect := Config.Options.Images.PosterAspect
+				for _, ic := range icons {
+					if matchAspect(ic.Width, ic.Height, aspect) {
+						selected = ic
+						break
+					}
+				}
+				if selected.Src == "" {
+					// fallback to first
+					selected = icons[0]
+				}
+
 				if Config.Options.Images.Download {
 					imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
 				} else {
-					imageURL = icons[0].Src
+					imageURL = selected.Src
 				}
 			}
+
 
 			if imageURL == "" && Config.Options.Images.Tmdb.Enable {
 				imageURL, err = tmdb.SearchItem(logger, pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.Images.Tmdb.ApiKey, Config.Files.TmdbCacheFile)
