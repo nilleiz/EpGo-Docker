@@ -1,10 +1,10 @@
-# EPGo
+## EPGo
 
 subredit: [epgo](https://www.reddit.com/r/EpGo/)
 
-## EoGo-Docker
+# EpGo-Docker
 
-# EpGo Docker Image
+## EpGo Docker Image
 
 A robust, secure, and multi-arch Docker image for **[EpGo](https://github.com/Chuchodavids/EpGo)**, a command-line tool for downloading television listings from Schedules Direct.
 
