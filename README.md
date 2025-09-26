@@ -101,7 +101,7 @@ The entrypoint adjusts ownership of `/app` to the non-root `app` user. On the ho
 
 ---
 
-# Original with up to date information
+# Original README with up to date information
 
 ## Features
 
