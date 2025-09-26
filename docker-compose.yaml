@@ -1,7 +1,7 @@
 services:
       epgo:
         # ‼ IMPORTANT: Change this to your Docker Hub image name ‼
-        image: yourusername/epgo:latest
+        image: nillivanilli0815/epgo:latest
         container_name: epgo
         environment:
           - TZ=America/Chicago
