@@ -5,15 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
 	"log/slog"
 )
-
-// Upstream EPGo version
-const Version = "v3.2.1"
-
-// Your Docker fork version
-const BaseVersion = "v1.0"
 
 // Names (base = your fork, non-base = upstream)
 const (
