@@ -9,11 +9,19 @@ import (
 	"log/slog"
 )
 
-// AppName : App name
-
-// Version : Version
+// Upstream EPGo version
 const Version = "v3.2.1"
-const AppName = "epgo " + Version
+
+// Your Docker fork version
+const BaseVersion = "v1.0"
+
+// Names (base = your fork, non-base = upstream)
+const (
+	AppName  = "EPGo-Docke"        // upstream app
+	Version = "v1.1"
+	BaseName = "EPGo" // your Docker fork
+	BaseVersion = "v3.2.1"	
+)
 
 // Config : Config file (struct)
 var Config config
@@ -32,7 +40,12 @@ func main() {
 
 	flag.Parse()
 	Config2 = *config
-	logger.Info("EPGO starting", "version", Version)
+
+	// Startup banner
+	logger.Info(fmt.Sprintf("%s starting", AppName),
+		"version", Version,
+		"based_on", fmt.Sprintf("%s version=%s", BaseName, BaseVersion),
+	)
 
 	if *h {
 		fmt.Println()
@@ -41,6 +54,7 @@ func main() {
 	}
 
 	if *version {
+		// Keep printing the upstream EPGo version here (as before)
 		fmt.Println(Version)
 		os.Exit(0)
 	}
