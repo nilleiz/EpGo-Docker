@@ -37,12 +37,12 @@ This image is controlled via environment variables in your `docker-compose.yaml`
    cd epgo-stack
    ```
 
-2. Create a `docker-compose.yaml` file with the following content. **Remember to change `yourusername/epgo:latest`** to your image name.
+2. Create a `docker-compose.yaml` file with the following content.
 
    ```yaml
    services:
      epgo:
-       image: yourusername/epgo:latest  # ← change this
+       image: nillivanilli0815/epgo:latest
        container_name: epgo
        environment:
          - TZ=America/Chicago
