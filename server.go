@@ -1,19 +1,126 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
-
+	"strings"
+	"time"
 )
 
-// StartServer starts a local HTTP server to serve files from the specified directory.
+// StartServer starts a local HTTP server: static files + lazy SD image proxy.
 func StartServer(dir string, port string) {
+	mux := http.NewServeMux()
+
+	// 1) Lazy SD image proxy: /proxy/sd/{programID}
+	mux.HandleFunc("/proxy/sd/", func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/sd/"), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			http.Error(w, "missing programID", http.StatusBadRequest)
+			return
+		}
+		programID := parts[0]
+
+		// Zielverzeichnis für Cache
+		folderImage := Config.Options.Images.Path
+		if folderImage == "" {
+			folderImage = "images"
+		}
+		if err := os.MkdirAll(folderImage, 0755); err != nil {
+			http.Error(w, "failed to prepare image folder", http.StatusInternalServerError)
+			return
+		}
+		filePath := filepath.Join(folderImage, programID+".jpg")
+
+		// Bereits im Cache?
+		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+			serveFileCached(w, r, filePath)
+			return
+		}
+
+		// Nicht gecached → SD-Bild auswählen
+		chosen, ok := Cache.resolveSDImageForProgram(programID)
+		if !ok || chosen.URI == "" {
+			http.NotFound(w, r)
+			return
+		}
+
+		// SD-URL bauen (Token nur serverseitig)
+		imageURL := chosen.URI
+		if !strings.HasPrefix(imageURL, "http://") && !strings.HasPrefix(imageURL, "https://") {
+			if err := ensureToken(); err != nil {
+				http.Error(w, "token error", http.StatusBadGateway)
+				return
+			}
+			imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s?token=%s", imageURL, Token)
+		}
+
+		client := &http.Client{Timeout: 20 * time.Second}
+		fetch := func(url string) (*http.Response, error) {
+			req, _ := http.NewRequest("GET", url, nil)
+			req.Header.Set("User-Agent", AppName)
+			return client.Do(req)
+		}
+
+		resp, err := fetch(imageURL)
+		if err != nil {
+			http.Error(w, "fetch failed", http.StatusBadGateway)
+			return
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			_ = forceRefreshToken()
+			resp.Body.Close()
+			imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s?token=%s", strings.TrimPrefix(chosen.URI, "/"), Token)
+			resp, err = fetch(imageURL)
+			if err != nil {
+				http.Error(w, "fetch retry failed", http.StatusBadGateway)
+				return
+			}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, resp.Status, resp.StatusCode)
+			return
+		}
+
+		// Auf Disk schreiben
+		out, err := os.Create(filePath)
+		if err != nil {
+			http.Error(w, "save failed", http.StatusInternalServerError)
+			return
+		}
+		if _, err = io.Copy(out, resp.Body); err != nil {
+			out.Close()
+			_ = os.Remove(filePath)
+			http.Error(w, "save failed", http.StatusInternalServerError)
+			return
+		}
+		out.Close()
+
+		serveFileCached(w, r, filePath)
+	})
+
+	// 2) Static file server an "/"
 	fs := http.FileServer(http.Dir(dir))
-	http.Handle("/", fs)
+	mux.Handle("/", fs)
 
 	logger.Info("Starting server", "address", "http://"+Config.Server.Address+":"+port, "serving", filepath.Clean(dir))
-	err := http.ListenAndServe(":"+port, nil)
-	if err != nil {
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		logger.Error("Server failed to start", "error", err)
 	}
+}
+
+// Starke Cache-Header
+func serveFileCached(w http.ResponseWriter, r *http.Request, path string) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Last-Modified", fi.ModTime().UTC().Format(http.TimeFormat))
+	http.ServeFile(w, r, path)
 }

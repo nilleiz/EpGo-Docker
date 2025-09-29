@@ -10,6 +10,7 @@ import (
 )
 
 var Token string
+var lastTokenTime time.Time
 
 // Init : Init Schedules Direct
 func (sd *SD) Init() (err error) {
@@ -43,6 +44,7 @@ func (sd *SD) Init() (err error) {
 
 		sd.Token = sd.Resp.Login.Token
 		Token = sd.Token
+		lastTokenTime = time.Now()
 		return
 	}
 
@@ -272,3 +274,22 @@ func (sd *SD) Connect() (err error) {
 	return
 }
 
+// --- Helpers for on-demand token management (used by the proxy) ---
+func ensureToken() error {
+	if Token == "" || time.Since(lastTokenTime) > 23*time.Hour {
+		var s SD
+		if err := s.Init(); err != nil {
+			return err
+		}
+		if err := s.Login(); err != nil {
+			return err
+		}
+		// lastTokenTime wird in Login() gesetzt
+	}
+	return nil
+}
+
+func forceRefreshToken() error {
+	Token = ""
+	return ensureToken()
+}

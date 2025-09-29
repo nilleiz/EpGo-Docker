@@ -27,10 +27,15 @@ type config struct {
 		SubtitleIntoDescription bool `yaml:"Subtitle into Description"`
 		Credits                 bool `yaml:"Insert credits tag into XML file"`
 		Images                  struct {
-			Download bool   `yaml:"Download Images from Schedules Direct"`
-			Path     string `yaml:"Image Path"`
+			Download     bool   `yaml:"Download Images from Schedules Direct"`
+			Path         string `yaml:"Image Path"`
 			PosterAspect string `yaml:"Poster Aspect"` // all | 2x3 | 4x3 | 16x9
-			Tmdb     struct {
+
+			// NEU: Lazy Proxy-Mode (keine Vorab-Downloads; XMLTV zeigt lokale Proxy-URL)
+			ProxyMode    bool   `yaml:"Proxy Mode"`
+			ProxyBaseURL string `yaml:"Proxy Base URL"` // optional; sonst Server Address/Port
+
+			Tmdb struct {
 				Enable bool   `yaml:"Enable"`
 				ApiKey string `yaml:"Api Key"`
 			} `yaml:"The MovieDB"`

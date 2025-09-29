@@ -176,9 +176,16 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			var imageURL string
 			icons := Cache.GetIcon(s.ProgramID)
 			if len(icons) != 0 {
-				if Config.Options.Images.Download {
+				if Config.Options.Images.ProxyMode && Config.Server.Enable {
+					base := Config.Options.Images.ProxyBaseURL
+					if base == "" {
+						base = "http://" + Config.Server.Address + ":" + Config.Server.Port
+					}
+					imageURL = base + "/proxy/sd/" + s.ProgramID
+				} else if Config.Options.Images.Download {
 					imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
 				} else {
+					// Fallback (vermeiden, da Token abläuft)
 					imageURL = icons[0].Src
 				}
 			}
