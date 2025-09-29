@@ -13,11 +13,9 @@ import (
 
 var mu sync.Mutex
 
-// Open : Open cache file and read data from file
+// Open loads the cache file from disk into memory.
 func (c *cache) Open() (err error) {
-
 	if FileExists(Config.Files.Cache) {
-
 		c.Lock()
 		defer c.Unlock()
 
@@ -35,13 +33,11 @@ func (c *cache) Open() (err error) {
 			return err
 		}
 	}
-
 	return
 }
 
-// Save : Save data to cache file
+// Save writes the in-memory cache back to disk.
 func (c *cache) Save() (err error) {
-
 	c.Lock()
 	defer c.Unlock()
 
@@ -56,14 +52,14 @@ func (c *cache) Save() (err error) {
 		logger.Error("unable to write the cache", "error", err)
 		return err
 	}
-
 	return
 }
 
+// GetIcon returns an Icon slice for a program. In ProxyMode we do NOT pre-download.
+// When not in ProxyMode but Download=true, we pre-download to local storage.
 func (c *cache) GetIcon(id string) (i []Icon) {
-
 	if m, ok := c.Metadata[id]; ok {
-		// 1) Aspekt-Filter ("16x9" / "2x3" / "4x3" / "all")
+		// 1) Filter by configured SD aspect string ("16x9", "2x3", "4x3"). "all" or empty = no filter.
 		desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
 		candidates := make([]Data, 0, len(m.Data))
 		for _, d := range m.Data {
@@ -72,10 +68,11 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 			}
 		}
 		if len(candidates) == 0 {
+			// No exact aspect match → fall back to whatever SD has for this item
 			candidates = m.Data
 		}
 
-		// 2) Poster bevorzugen; bei Gleichstand größere Breite
+		// 2) Prefer poster-like categories, tie-break by width (bigger first)
 		categoryPrefs := map[string]int{
 			"Poster Art": 0,
 			"Box Art":    1,
@@ -107,7 +104,7 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 			}
 			out := Icon{Src: uri, Height: chosen.Height, Width: chosen.Width}
 
-			// WICHTIG: im ProxyMode KEIN Vorab-Download
+			// IMPORTANT: in ProxyMode we do NOT pre-download here.
 			if Config.Options.Images.Download && !Config.Options.Images.ProxyMode {
 				downloadImage(out.Src, id)
 			}
@@ -117,7 +114,8 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 	return
 }
 
-// resolveSDImageForProgram: Auswahl des SD-Bildes ohne Download (für Proxy).
+// resolveSDImageForProgram chooses the SD image record for a program without downloading it.
+// Used by the lazy proxy endpoint so it can fetch exactly once on first client request.
 func (c *cache) resolveSDImageForProgram(id string) (Data, bool) {
 	if m, ok := c.Metadata[id]; ok {
 		desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
@@ -161,16 +159,14 @@ func (c *cache) resolveSDImageForProgram(id string) (Data, bool) {
 	return Data{}, false
 }
 
-// downloadImage : Download image from url and save to disk
-func downloadImage(url string, file string) {
-
-	var localPath = filepath.Join(Config.Options.Images.Path, file) + ".jpg"
+// downloadImage downloads a single image URL and saves it to local disk as {Image Path}/{programID}.jpg.
+// This is only used when not running in ProxyMode (i.e., eager mode).
+func downloadImage(url string, programID string) {
+	localPath := filepath.Join(Config.Options.Images.Path, programID) + ".jpg"
 
 	if _, err := os.Stat(localPath); os.IsNotExist(err) {
-
 		if _, err := os.Stat(Config.Options.Images.Path); os.IsNotExist(err) {
-			err := os.MkdirAll(Config.Options.Images.Path, 0755)
-			if err != nil {
+			if err := os.MkdirAll(Config.Options.Images.Path, 0755); err != nil {
 				logger.Error("unable to create the images path", "error", err)
 				return
 			}
@@ -190,11 +186,9 @@ func downloadImage(url string, file string) {
 		}
 		defer out.Close()
 
-		_, err = io.Copy(out, resp.Body)
-		if err != nil {
+		if _, err = io.Copy(out, resp.Body); err != nil {
 			logger.Error("unable to save downloaded image", "error", err)
 			return
 		}
-
 	}
 }

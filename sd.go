@@ -12,14 +12,12 @@ import (
 var Token string
 var lastTokenTime time.Time
 
-// Init : Init Schedules Direct
+// Init sets up Schedules Direct endpoints and call functions.
 func (sd *SD) Init() (err error) {
-
 	sd.BaseURL = "https://json.schedulesdirect.org/20141201/"
 
-	// Funtion to get token
+	// Login: obtain a token
 	sd.Login = func() (err error) {
-
 		sd.Req.URL = sd.BaseURL + "token"
 		sd.Req.Type = "POST"
 		sd.Req.Call = "login"
@@ -34,11 +32,9 @@ func (sd *SD) Init() (err error) {
 
 		err = sd.Connect()
 		if err != nil {
-
 			if sd.Resp.Login.Code != 0 {
 				return err
 			}
-
 			return
 		}
 
@@ -48,9 +44,8 @@ func (sd *SD) Init() (err error) {
 		return
 	}
 
-	// Status function to check status of schedules direct API
+	// Status call
 	sd.Status = func() (err error) {
-
 		fmt.Println()
 
 		sd.Req.URL = sd.BaseURL + "status"
@@ -66,50 +61,37 @@ func (sd *SD) Init() (err error) {
 
 		if sd.Resp.Status.Code == 3000 || sd.Resp.Status.Code == 4009 {
 			logger.Error("Schedule Direct issue", "status_message", sd.Resp.Status.Message, "status_code", sd.Resp.Status.Code)
-			return fmt.Errorf("schdule Direct is down: %w", err)
+			return fmt.Errorf("schedule Direct is down: %w", err)
 		}
 
 		logger.Info("", "Expiration", sd.Resp.Status.Account.Expires)
 		logger.Info("", "Lineups", len(sd.Resp.Status.Lineups), "Limit", sd.Resp.Status.Account.MaxLineups)
 		logger.Info("", "Channels", len(Config.Station))
-
 		return
 	}
 
+	// Countries
 	sd.Countries = func() (err error) {
-
 		sd.Req.URL = sd.BaseURL + "available/countries"
 		sd.Req.Type = "GET"
 		sd.Req.Data = nil
 		sd.Req.Call = "countries"
 		sd.Req.Compression = false
-
-		err = sd.Connect()
-		if err != nil {
-			return
-		}
-
-		return
+		return sd.Connect()
 	}
 
+	// Headends
 	sd.Headends = func() (err error) {
-
 		sd.Req.URL = fmt.Sprintf("%sheadends%s", sd.BaseURL, sd.Req.Parameter)
 		sd.Req.Type = "GET"
 		sd.Req.Data = nil
 		sd.Req.Call = "headends"
 		sd.Req.Compression = false
-
-		err = sd.Connect()
-		if err != nil {
-			return
-		}
-
-		return
+		return sd.Connect()
 	}
 
+	// Lineups
 	sd.Lineups = func() (err error) {
-
 		sd.Req.URL = fmt.Sprintf("%slineups%s", sd.BaseURL, sd.Req.Parameter)
 		sd.Req.Data = nil
 		sd.Req.Call = "lineups"
@@ -119,55 +101,39 @@ func (sd *SD) Init() (err error) {
 		if err != nil {
 			return
 		}
-
 		if len(sd.Resp.Lineup.Message) != 0 {
 			logger.Info("", "msg", sd.Resp.Lineup.Message)
 		}
-
 		return
 	}
 
+	// Schedule
 	sd.Schedule = func() (err error) {
-
 		sd.Req.URL = fmt.Sprintf("%sschedules", sd.BaseURL)
 		sd.Req.Type = "POST"
 		sd.Req.Call = "schedule"
 		sd.Req.Compression = false
-
-		err = sd.Connect()
-		if err != nil {
-			return
-		}
-
-		return
+		return sd.Connect()
 	}
 
+	// Program
 	sd.Program = func() (err error) {
-
 		sd.Req.Type = "POST"
 		sd.Req.Call = "program"
 		sd.Req.Compression = true
-
-		err = sd.Connect()
-		if err != nil {
-			return
-		}
-
-		return
+		return sd.Connect()
 	}
 
 	return
 }
 
-// Connect : Connect to Schedules Direct
-
+// Connect sends a prepared request to Schedules Direct and unmarshals the response.
 func (sd *SD) Connect() (err error) {
-
 	var sdStatus SDStatus
 
 	req, err := http.NewRequest(sd.Req.Type, sd.Req.URL, bytes.NewBuffer(sd.Req.Data))
 	if err != nil {
-		logger.Warn("Could not create request for Token", "error", err)
+		logger.Warn("Could not create request", "error", err)
 		return
 	}
 
@@ -185,21 +151,20 @@ func (sd *SD) Connect() (err error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.Error("failed communicate with Schedules Direct API", "error", err)
+		logger.Error("failed to communicate with Schedules Direct API", "error", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Error("Could not read response body from Schedules direct token retrieval method", "error", err)
+		logger.Error("could not read response body", "error", err)
 		return
 	}
 
 	sd.Resp.Body = body
 
 	switch sd.Req.Call {
-
 	case "login":
 		err = json.Unmarshal(body, &sd.Resp.Login)
 		if err != nil {
@@ -235,7 +200,6 @@ func (sd *SD) Connect() (err error) {
 		if err != nil {
 			logger.Error("could not unmarshal status response", "error", err)
 		}
-
 		sdStatus.Code = sd.Resp.Status.Code
 		sdStatus.Message = sd.Resp.Status.Message
 
@@ -257,13 +221,11 @@ func (sd *SD) Connect() (err error) {
 			logger.Error("could not unmarshal lineups response", "error", err)
 		}
 		sd.Resp.Body = body
-
 		sdStatus.Code = sd.Resp.Lineup.Code
 		sdStatus.Message = sd.Resp.Lineup.Message
 
 	case "schedule", "program":
 		sd.Resp.Body = body
-
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -274,7 +236,7 @@ func (sd *SD) Connect() (err error) {
 	return
 }
 
-// --- Helpers for on-demand token management (used by the proxy) ---
+// Helpers for on-demand token management (used by the proxy).
 func ensureToken() error {
 	if Token == "" || time.Since(lastTokenTime) > 23*time.Hour {
 		var s SD
@@ -284,7 +246,7 @@ func ensureToken() error {
 		if err := s.Login(); err != nil {
 			return err
 		}
-		// lastTokenTime wird in Login() gesetzt
+		// lastTokenTime is set during Login()
 	}
 	return nil
 }

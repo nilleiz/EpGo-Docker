@@ -11,10 +11,13 @@ import (
 )
 
 // StartServer starts a local HTTP server: static files + lazy SD image proxy.
+// HTTPS is expected to be terminated by your external reverse proxy (e.g., Cloudflare/Nginx).
 func StartServer(dir string, port string) {
 	mux := http.NewServeMux()
 
-	// 1) Lazy SD image proxy: /proxy/sd/{programID}
+	// On-demand SD image proxy: /proxy/sd/{programID}
+	// When first requested, the image is fetched from Schedules Direct and cached on disk.
+	// Future requests are served from local disk only.
 	mux.HandleFunc("/proxy/sd/", func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/sd/"), "/")
 		if len(parts) == 0 || parts[0] == "" {
@@ -23,7 +26,7 @@ func StartServer(dir string, port string) {
 		}
 		programID := parts[0]
 
-		// Zielverzeichnis für Cache
+		// Destination folder for cached images
 		folderImage := Config.Options.Images.Path
 		if folderImage == "" {
 			folderImage = "images"
@@ -34,20 +37,20 @@ func StartServer(dir string, port string) {
 		}
 		filePath := filepath.Join(folderImage, programID+".jpg")
 
-		// Bereits im Cache?
+		// Serve from disk if present
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
 			serveFileCached(w, r, filePath)
 			return
 		}
 
-		// Nicht gecached → SD-Bild auswählen
+		// Not cached yet → choose which SD image to fetch for this program
 		chosen, ok := Cache.resolveSDImageForProgram(programID)
 		if !ok || chosen.URI == "" {
 			http.NotFound(w, r)
 			return
 		}
 
-		// SD-URL bauen (Token nur serverseitig)
+		// Build SD download URL (attach a fresh token if needed).
 		imageURL := chosen.URI
 		if !strings.HasPrefix(imageURL, "http://") && !strings.HasPrefix(imageURL, "https://") {
 			if err := ensureToken(); err != nil {
@@ -69,6 +72,7 @@ func StartServer(dir string, port string) {
 			http.Error(w, "fetch failed", http.StatusBadGateway)
 			return
 		}
+		// If token expired, refresh once and retry.
 		if resp.StatusCode == http.StatusUnauthorized {
 			_ = forceRefreshToken()
 			resp.Body.Close()
@@ -86,7 +90,7 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// Auf Disk schreiben
+		// Save to disk once
 		out, err := os.Create(filePath)
 		if err != nil {
 			http.Error(w, "save failed", http.StatusInternalServerError)
@@ -100,20 +104,21 @@ func StartServer(dir string, port string) {
 		}
 		out.Close()
 
+		// Serve cached file
 		serveFileCached(w, r, filePath)
 	})
 
-	// 2) Static file server an "/"
+	// Static file server at "/"
 	fs := http.FileServer(http.Dir(dir))
 	mux.Handle("/", fs)
 
 	logger.Info("Starting server", "address", "http://"+Config.Server.Address+":"+port, "serving", filepath.Clean(dir))
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		logger.Error("Server failed to start", "error", err)
+		logger.Error("HTTP server failed to start", "error", err)
 	}
 }
 
-// Starke Cache-Header
+// Serve a local file with strong cache headers
 func serveFileCached(w http.ResponseWriter, r *http.Request, path string) {
 	fi, err := os.Stat(path)
 	if err != nil {
