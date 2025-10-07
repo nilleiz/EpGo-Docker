@@ -3,17 +3,17 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
-	"log/slog"
 )
 
 // Names (base = your fork, non-base = upstream)
 const (
-	AppName  = "EPGo-Docker" // your Docker fork        
-	Version = "v1.1"
-	BaseName = "EPGo" // upstream app
-	BaseVersion = "v3.2.1"	
+	AppName     = "EPGo-Docker" // your Docker fork
+	Version     = "v1.1"
+	BaseName    = "EPGo"        // upstream app
+	BaseVersion = "v3.2.1"
 )
 
 // Config : Config file (struct)
@@ -42,7 +42,7 @@ func main() {
 
 	if *h {
 		fmt.Println()
-		flag.Usage()
+		flag.usage()
 		os.Exit(0)
 	}
 
@@ -64,7 +64,34 @@ func main() {
 		var sd SD
 		err := sd.Update(*config)
 		if err != nil {
+			// EPG grab failed — log the error first
 			logger.Error("unable to get data from Schedules Direct", "error", err)
+
+			// Optional behavior: keep the image proxy up so cached artwork still works
+			// This uses the new config switch: Server.Start proxy when EPG grab fails
+			if Config.Server.Enable && Config.Server.StartProxyOnGrabFail {
+				// Decide where to serve from; default to "images" if empty
+				imgDir := Config.Options.Images.Path
+				if strings.TrimSpace(imgDir) == "" {
+					imgDir = "images"
+				}
+				port := Config.Server.Port
+				if strings.TrimSpace(port) == "" {
+					port = "8080"
+				}
+
+				logger.Warn("EPG fetch failed; starting image proxy anyway so cached artwork keeps working",
+					"address", Config.Server.Address, "port", port, "dir", imgDir)
+
+				// StartServer blocks; we intentionally keep the process alive serving cached images
+				StartServer(imgDir, port)
+
+				// NOTE: If you prefer to keep returning to caller after starting the server,
+				// run it asynchronously: go StartServer(imgDir, port); select {}
+			}
+
+			// If the switch is off, exit with non-zero (preserve current behavior)
+			os.Exit(1)
 		}
 	}
 

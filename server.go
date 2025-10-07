@@ -23,13 +23,13 @@ func ensureProgramMetadata(programID string) bool {
 
 	logger.Info("Proxy: metadata missing, fetching", "programID", programID)
 
-	// Prepare SD client with a reusable token (no extra login storms)
+	// Prepare SD client with a reusable token (avoid login storms)
 	var sd SD
 	if err := sd.Init(); err != nil {
 		logger.Error("Proxy: SD init failed", "programID", programID, "error", err)
 		return false
 	}
-	tok, err := getSDToken()
+	tok, err := getSDToken() // uses shared token; only logs in when near expiry
 	if err != nil {
 		logger.Error("Proxy: token fetch failed (metadata)", "programID", programID, "error", err)
 		return false
@@ -117,6 +117,31 @@ func normalizeFetchURL(chosenURI, freshToken string) (imageID string, imageURL s
 	return imageID, imageURL
 }
 
+// tryServeCached tries to serve an already-cached image without any network/token.
+// It checks both the new cache naming ({imageID}.jpg via metadata) and the legacy ({ProgramID}.jpg).
+func tryServeCached(w http.ResponseWriter, r *http.Request, programID string, folderImage string) bool {
+	// 1) If we have metadata, derive imageID and look for {imageID}.jpg
+	if ch, ok := Cache.resolveSDImageForProgram(programID); ok && ch.URI != "" {
+		id, _ := normalizeFetchURL(ch.URI, "dummy") // only need imageID
+		fp := filepath.Join(folderImage, id+".jpg")
+		if fi, err := os.Stat(fp); err == nil && !fi.IsDir() {
+			logger.Info("Proxy: serve from cache (by imageID)", "programID", programID, "imageID", id, "path", fp)
+			serveFileCached(w, r, fp)
+			return true
+		}
+	}
+
+	// 2) Legacy eager mode saved as {ProgramID}.jpg
+	legacy := filepath.Join(folderImage, programID+".jpg")
+	if fi, err := os.Stat(legacy); err == nil && !fi.IsDir() {
+		logger.Info("Proxy: serve from cache (legacy programID)", "programID", programID, "path", legacy)
+		serveFileCached(w, r, legacy)
+		return true
+	}
+
+	return false
+}
+
 // StartServer starts a local HTTP server: static files + lazy SD image proxy.
 // HTTPS termination should be done by your reverse proxy (Cloudflare/Nginx).
 func StartServer(dir string, port string) {
@@ -132,7 +157,7 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// Some clients send ".../EPxxxxxx.jpg" — normalize it.
+		// Normalize possible ".../EPxxxxxx.jpg"
 		programID := strings.TrimSuffix(parts[0], ".jpg")
 
 		// Destination folder for cached images
@@ -145,7 +170,12 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// Choose SD image for the program; if metadata is missing, fetch it on-demand.
+		// >>> OFFLINE-FIRST: Try to serve from existing cache BEFORE any network/token <<<
+		if tryServeCached(w, r, programID, folderImage) {
+			return
+		}
+
+		// Resolve candidate (may require metadata). Only attempt metadata fetch if absolutely needed.
 		chosen, ok := Cache.resolveSDImageForProgram(programID)
 		if !ok || chosen.URI == "" {
 			if ensureProgramMetadata(programID) {
@@ -155,33 +185,45 @@ func StartServer(dir string, port string) {
 				}
 			}
 		}
-		if !ok || chosen.URI == "" {
-			logger.Warn("Proxy: no suitable image in metadata", "programID", programID)
-			http.NotFound(w, r)
+
+		// With metadata available, check again for a cached {imageID}.jpg before networking.
+		if ok && chosen.URI != "" {
+			id, _ := normalizeFetchURL(chosen.URI, "dummy")
+			fp := filepath.Join(folderImage, id+".jpg")
+			if fi, err := os.Stat(fp); err == nil && !fi.IsDir() {
+				logger.Info("Proxy: serve from cache (by imageID, after metadata)", "programID", programID, "imageID", id, "path", fp)
+				serveFileCached(w, r, fp)
+				return
+			}
+		}
+
+		// Still not cached: we need a token for a one-time fetch. If token cannot be obtained (login cap),
+		// we fail gracefully WITHOUT breaking cached images (we already tried those above).
+		token, err := getSDToken()
+		if err != nil {
+			logger.Error("Proxy: token error before fetch; serving nothing new", "programID", programID, "error", err)
+			http.NotFound(w, r) // No network allowed and nothing cached
 			return
 		}
 
-		logger.Info("Proxy: resolved image candidate", "programID", programID, "uri", chosen.URI, "aspect", chosen.Aspect, "category", chosen.Category, "w", chosen.Width, "h", chosen.Height)
-
-		// Obtain (or reuse) a token — does NOT login unless necessary
-		token, err := getSDToken()
-		if err != nil {
-			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
-			http.Error(w, "token error", http.StatusBadGateway)
+		// If we still don't have a chosen URI, metadata probably failed; bail out (no online fetch).
+		if !ok || chosen.URI == "" {
+			logger.Warn("Proxy: no suitable image in metadata (no online fetch)", "programID", programID)
+			http.NotFound(w, r)
 			return
 		}
 
 		imageID, imageURL := normalizeFetchURL(chosen.URI, token)
 		filePath := filepath.Join(folderImage, imageID+".jpg")
 
-		// Serve from disk if present
+		// Final preflight: if another request just cached it, serve it.
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-			logger.Info("Proxy: serve from cache", "programID", programID, "imageID", imageID, "path", filePath)
+			logger.Info("Proxy: serve from cache (race win)", "programID", programID, "imageID", imageID, "path", filePath)
 			serveFileCached(w, r, filePath)
 			return
 		}
 
-		// Not cached yet → fetch once (retry once on 401 with forced refresh)
+		// One-time fetch (retry once on 401 with forced refresh)
 		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
 
 		client := &http.Client{Timeout: 20 * time.Second}

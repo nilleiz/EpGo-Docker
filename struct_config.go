@@ -16,9 +16,10 @@ type config struct {
 	} `yaml:"Files"`
 
 	Server struct {
-		Enable  bool   `yaml:"Enable"`
-		Address string `yaml:"Address"`
-		Port    string `yaml:"Port"`
+		Enable              bool   `yaml:"Enable"`
+		Address             string `yaml:"Address"`
+		Port                string `yaml:"Port"`
+		StartProxyOnGrabFail bool   `yaml:"Start proxy when EPG grab fails"` // NEW
 	} `yaml:"Server"`
 
 	Options struct {
@@ -31,17 +32,17 @@ type config struct {
 			Path         string `yaml:"Image Path"`
 			PosterAspect string `yaml:"Poster Aspect"` // all | 2x3 | 4x3 | 16x9
 
-			// Lazy on-demand proxy mode:
-			// - XMLTV uses local/proxied URLs.
-			// - Images are fetched and cached only when a client requests them.
+			// Lazy on-demand proxy mode. When enabled, XMLTV uses proxied URLs and
+			// images are fetched + cached only on first client request.
 			ProxyMode    bool   `yaml:"Proxy Mode"`
-			ProxyBaseURL string `yaml:"Proxy Base URL"` // If set (e.g., https://epgo.example.com), XMLTV uses it verbatim.
+			ProxyBaseURL string `yaml:"Proxy Base URL"`
 
 			Tmdb struct {
 				Enable bool   `yaml:"Enable"`
 				ApiKey string `yaml:"Api Key"`
 			} `yaml:"The MovieDB"`
 		} `yaml:"Images"`
+
 		Rating struct {
 			Guidelines          bool     `yaml:"Insert rating tag into XML file"`
 			MaxEntries          int      `yaml:"Maximum rating entries. 0 for all entries"`
