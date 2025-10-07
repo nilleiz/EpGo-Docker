@@ -23,16 +23,18 @@ func ensureProgramMetadata(programID string) bool {
 
 	logger.Info("Proxy: metadata missing, fetching", "programID", programID)
 
-	// Prepare SD client and LOGIN to obtain a token (was missing before).
+	// Prepare SD client with a reusable token (no extra login storms)
 	var sd SD
 	if err := sd.Init(); err != nil {
 		logger.Error("Proxy: SD init failed", "programID", programID, "error", err)
 		return false
 	}
-	if err := sd.Login(); err != nil {
-		logger.Error("Proxy: SD login failed", "programID", programID, "error", err)
+	tok, err := getSDToken()
+	if err != nil {
+		logger.Error("Proxy: token fetch failed (metadata)", "programID", programID, "error", err)
 		return false
 	}
+	sd.Token = tok
 
 	// POST to /metadata/programs/ with a single-element array body
 	sd.Req.URL = fmt.Sprintf("%smetadata/programs/", sd.BaseURL)
@@ -47,9 +49,20 @@ func ensureProgramMetadata(programID string) bool {
 	}
 	sd.Req.Data = body
 
+	// First attempt
 	if err := sd.Connect(); err != nil {
-		logger.Error("Proxy: SD metadata connect failed", "programID", programID, "error", err)
-		return false
+		logger.Warn("Proxy: SD metadata connect failed, will try refresh", "programID", programID, "error", err)
+		// Try once more with a forced fresh token (handles 401/expired, etc.)
+		if tok2, err2 := forceRefreshToken(); err2 == nil {
+			sd.Token = tok2
+			if err3 := sd.Connect(); err3 != nil {
+				logger.Error("Proxy: SD metadata connect failed after refresh", "programID", programID, "error", err3)
+				return false
+			}
+		} else {
+			logger.Error("Proxy: token refresh failed (metadata)", "programID", programID, "error", err2)
+			return false
+		}
 	}
 
 	// Reuse existing cache parsing to fill Cache.Metadata
@@ -150,9 +163,8 @@ func StartServer(dir string, port string) {
 
 		logger.Info("Proxy: resolved image candidate", "programID", programID, "uri", chosen.URI, "aspect", chosen.Aspect, "category", chosen.Category, "w", chosen.Width, "h", chosen.Height)
 
-		// Serve from disk if present
-		// We need a token now to normalize the final fetch URL, also gives us imageID for filename.
-		token, err := ensureFreshToken()
+		// Obtain (or reuse) a token — does NOT login unless necessary
+		token, err := getSDToken()
 		if err != nil {
 			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
 			http.Error(w, "token error", http.StatusBadGateway)
@@ -162,13 +174,14 @@ func StartServer(dir string, port string) {
 		imageID, imageURL := normalizeFetchURL(chosen.URI, token)
 		filePath := filepath.Join(folderImage, imageID+".jpg")
 
+		// Serve from disk if present
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
 			logger.Info("Proxy: serve from cache", "programID", programID, "imageID", imageID, "path", filePath)
 			serveFileCached(w, r, filePath)
 			return
 		}
 
-		// Not cached yet → fetch once with a fresh token (already have one)
+		// Not cached yet → fetch once (retry once on 401 with forced refresh)
 		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
 
 		client := &http.Client{Timeout: 20 * time.Second}
@@ -184,16 +197,21 @@ func StartServer(dir string, port string) {
 			http.Error(w, "fetch failed", http.StatusBadGateway)
 			return
 		}
-		// If token expired, refresh once and retry.
+		// If token expired/invalid, refresh once and retry.
 		if resp.StatusCode == http.StatusUnauthorized {
 			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
 			resp.Body.Close()
-			token, _ = ensureFreshToken()
-			_, imageURL = normalizeFetchURL(chosen.URI, token)
-			resp, err = fetch(imageURL)
-			if err != nil {
-				logger.Error("Proxy: fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
-				http.Error(w, "fetch retry failed", http.StatusBadGateway)
+			if token2, err2 := forceRefreshToken(); err2 == nil {
+				_, imageURL = normalizeFetchURL(chosen.URI, token2)
+				resp, err = fetch(imageURL)
+				if err != nil {
+					logger.Error("Proxy: fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
+					http.Error(w, "fetch retry failed", http.StatusBadGateway)
+					return
+				}
+			} else {
+				logger.Error("Proxy: token refresh failed", "programID", programID, "error", err2)
+				http.Error(w, "token refresh failed", http.StatusBadGateway)
 				return
 			}
 		}
