@@ -42,7 +42,7 @@ func main() {
 
 	if *h {
 		fmt.Println()
-		flag.usage()
+		flag.Usage()
 		os.Exit(0)
 	}
 
@@ -71,12 +71,12 @@ func main() {
 			// This uses the new config switch: Server.Start proxy when EPG grab fails
 			if Config.Server.Enable && Config.Server.StartProxyOnGrabFail {
 				// Decide where to serve from; default to "images" if empty
-				imgDir := Config.Options.Images.Path
-				if strings.TrimSpace(imgDir) == "" {
+				imgDir := strings.TrimSpace(Config.Options.Images.Path)
+				if imgDir == "" {
 					imgDir = "images"
 				}
-				port := Config.Server.Port
-				if strings.TrimSpace(port) == "" {
+				port := strings.TrimSpace(Config.Server.Port)
+				if port == "" {
 					port = "8080"
 				}
 
