@@ -176,9 +176,18 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			var imageURL string
 			icons := Cache.GetIcon(s.ProgramID)
 			if len(icons) != 0 {
-				if Config.Options.Images.Download {
+				if Config.Options.Images.ProxyMode && Config.Server.Enable {
+					// Use proxy URL for lazy on-demand caching
+					base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
+					if base == "" {
+						base = "http://" + Config.Server.Address + ":" + Config.Server.Port
+					}
+					imageURL = base + "/proxy/sd/" + s.ProgramID
+				} else if Config.Options.Images.Download {
+					// Legacy eager mode (pre-downloaded)
 					imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
 				} else {
+					// Raw SD URL (expiring token) – avoid when possible
 					imageURL = icons[0].Src
 				}
 			}

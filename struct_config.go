@@ -27,10 +27,17 @@ type config struct {
 		SubtitleIntoDescription bool `yaml:"Subtitle into Description"`
 		Credits                 bool `yaml:"Insert credits tag into XML file"`
 		Images                  struct {
-			Download bool   `yaml:"Download Images from Schedules Direct"`
-			Path     string `yaml:"Image Path"`
+			Download     bool   `yaml:"Download Images from Schedules Direct"`
+			Path         string `yaml:"Image Path"`
 			PosterAspect string `yaml:"Poster Aspect"` // all | 2x3 | 4x3 | 16x9
-			Tmdb     struct {
+
+			// Lazy on-demand proxy mode:
+			// - XMLTV uses local/proxied URLs.
+			// - Images are fetched and cached only when a client requests them.
+			ProxyMode    bool   `yaml:"Proxy Mode"`
+			ProxyBaseURL string `yaml:"Proxy Base URL"` // If set (e.g., https://epgo.example.com), XMLTV uses it verbatim.
+
+			Tmdb struct {
 				Enable bool   `yaml:"Enable"`
 				ApiKey string `yaml:"Api Key"`
 			} `yaml:"The MovieDB"`
