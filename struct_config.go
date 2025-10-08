@@ -19,7 +19,6 @@ type config struct {
 		Enable              bool   `yaml:"Enable"`
 		Address             string `yaml:"Address"`
 		Port                string `yaml:"Port"`
-		StartProxyOnGrabFail bool   `yaml:"Start proxy when EPG grab fails"` // NEW
 	} `yaml:"Server"`
 
 	Options struct {

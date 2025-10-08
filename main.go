@@ -52,49 +52,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if len(*configure) != 0 {
-		err := Configure(*configure)
-		if err != nil {
-			logger.Error("unable to create the configuration file", "error", err)
-		}
-		os.Exit(0)
-	}
-
-	if len(*config) != 0 {
-		var sd SD
-		err := sd.Update(*config)
-		if err != nil {
-			// EPG grab failed — log the error first
-			logger.Error("unable to get data from Schedules Direct", "error", err)
-
-			// Optional behavior: keep the image proxy up so cached artwork still works
-			// This uses the new config switch: Server.Start proxy when EPG grab fails
-			if Config.Server.Enable && Config.Server.StartProxyOnGrabFail {
-				// Decide where to serve from; default to "images" if empty
-				imgDir := strings.TrimSpace(Config.Options.Images.Path)
-				if imgDir == "" {
-					imgDir = "images"
-				}
-				port := strings.TrimSpace(Config.Server.Port)
-				if port == "" {
-					port = "8080"
-				}
-
-				logger.Warn("EPG fetch failed; starting image proxy anyway so cached artwork keeps working",
-					"address", Config.Server.Address, "port", port, "dir", imgDir)
-
-				// StartServer blocks; we intentionally keep the process alive serving cached images
-				StartServer(imgDir, port)
-
-				// NOTE: If you prefer to keep returning to caller after starting the server,
-				// run it asynchronously: go StartServer(imgDir, port); select {}
-			}
-
-			// If the switch is off, exit with non-zero (preserve current behavior)
-			os.Exit(1)
-		}
-	}
-
+	// Standalone file server mode: epgo -serve dir:port
 	if len(*serve) != 0 {
 		parts := strings.Split(*serve, ":")
 		if len(parts) != 2 {
@@ -103,6 +61,53 @@ func main() {
 		}
 		dir := parts[0]
 		port := parts[1]
-		StartServer(dir, port)
+		StartServer(dir, port) // blocks
+		return
 	}
+
+	// Normal mode: epgo -config file.yaml
+	if len(*config) != 0 {
+		var sd SD
+		// Try to grab EPG; if this fails (e.g., SD account blocked), we still start the proxy if enabled.
+		err := sd.Update(*config)
+		if err != nil {
+			logger.Error("unable to get data from Schedules Direct", "error", err)
+		}
+
+		// If the YAML had Server.Enable: true, start the proxy regardless of EPG result.
+		// This ensures cached artwork/previously downloaded files remain available,
+		// and clients see an HTTP service even when SD is temporarily unavailable.
+		if Config.Server.Enable {
+			imgDir := strings.TrimSpace(Config.Options.Images.Path)
+			if imgDir == "" {
+				imgDir = "images"
+			}
+			port := strings.TrimSpace(Config.Server.Port)
+			if port == "" {
+				port = "8080"
+			}
+
+			if err != nil {
+				logger.Warn("EPG fetch failed; starting image proxy anyway so cached artwork keeps working",
+					"address", Config.Server.Address, "port", port, "dir", imgDir)
+			} else {
+				logger.Info("Starting image proxy after successful EPG refresh",
+					"address", Config.Server.Address, "port", port, "dir", imgDir)
+			}
+
+			StartServer(imgDir, port) // blocks
+			return
+		}
+
+		// If server is not enabled, preserve existing behavior:
+		// exit non-zero on EPG error, else exit success.
+		if err != nil {
+			os.Exit(1)
+		}
+		return
+	}
+
+	// If neither -serve nor -config was provided, show usage and exit.
+	flag.Usage()
+	os.Exit(2)
 }
