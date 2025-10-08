@@ -16,14 +16,12 @@ import (
 // ensureProgramMetadata fetches SD metadata for a single ProgramID and stores it in Cache.
 // Returns true if metadata is present afterwards.
 func ensureProgramMetadata(programID string) bool {
-	// Already present?
 	if _, ok := Cache.Metadata[programID]; ok {
 		return true
 	}
 
 	logger.Info("Proxy: metadata missing, fetching", "programID", programID)
 
-	// Prepare SD client with a reusable token (avoid login storms)
 	var sd SD
 	if err := sd.Init(); err != nil {
 		logger.Error("Proxy: SD init failed", "programID", programID, "error", err)
@@ -36,7 +34,6 @@ func ensureProgramMetadata(programID string) bool {
 	}
 	sd.Token = tok
 
-	// POST to /metadata/programs/ with a single-element array body
 	sd.Req.URL = fmt.Sprintf("%smetadata/programs/", sd.BaseURL)
 	sd.Req.Type = "POST"
 	sd.Req.Call = "metadata"
@@ -49,10 +46,8 @@ func ensureProgramMetadata(programID string) bool {
 	}
 	sd.Req.Data = body
 
-	// First attempt
 	if err := sd.Connect(); err != nil {
 		logger.Warn("Proxy: SD metadata connect failed, will try refresh", "programID", programID, "error", err)
-		// Try once more with a forced fresh token (handles 401/expired, etc.)
 		if tok2, err2 := forceRefreshToken(); err2 == nil {
 			sd.Token = tok2
 			if err3 := sd.Connect(); err3 != nil {
@@ -65,7 +60,6 @@ func ensureProgramMetadata(programID string) bool {
 		}
 	}
 
-	// Reuse existing cache parsing to fill Cache.Metadata
 	var wg sync.WaitGroup
 	wg.Add(1)
 	Cache.AddMetadata(&sd.Resp.Body, &wg)
@@ -84,9 +78,7 @@ func ensureProgramMetadata(programID string) bool {
 	return false
 }
 
-// Build the final SD image URL and return the imageID we store under.
-// - If chosenURI is a full SD URL, reuse its path (.jpg) and replace/attach our fresh token.
-// - If chosenURI is just an ID (with or without .jpg), construct canonical URL.
+// normalizeFetchURL builds the final SD image URL and returns the imageID we store under.
 func normalizeFetchURL(chosenURI, freshToken string) (imageID string, imageURL string) {
 	const base = "https://json.schedulesdirect.org/20141201/image/"
 
@@ -112,24 +104,51 @@ func normalizeFetchURL(chosenURI, freshToken string) (imageID string, imageURL s
 	return imageID, imageURL
 }
 
+// sdErrorTime extracts a reference time from an SD JSON error body.
+// Understands "serverTime" (unix seconds) or "datetime" (RFC3339). Returns UTC (or zero on failure).
+func sdErrorTime(buf []byte) time.Time {
+	type sdErr struct {
+		DateTime   string `json:"datetime"`
+		ServerTime int64  `json:"serverTime"`
+	}
+	var e sdErr
+	if err := json.Unmarshal(buf, &e); err != nil {
+		return time.Time{}
+	}
+	if e.ServerTime > 0 {
+		return time.Unix(e.ServerTime, 0).UTC()
+	}
+	if e.DateTime != "" {
+		if t, err := time.Parse(time.RFC3339, e.DateTime); err == nil {
+			return t.UTC()
+		}
+	}
+	return time.Time{}
+}
+
 // StartServer starts a local HTTP server: static files + lazy SD image proxy.
-// HTTPS termination should be done by your reverse proxy (Cloudflare/Nginx).
 func StartServer(dir string, port string) {
-	// Load the ProgramID→imageID index
+	// Load ProgramID → imageID index
 	indexInit()
 
 	mux := http.NewServeMux()
 
-	// On-demand SD image proxy: /proxy/sd/{programID}
+	// /proxy/sd/{programID}
 	mux.HandleFunc("/proxy/sd/", func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/sd/"), "/")
 		if len(parts) == 0 || parts[0] == "" {
 			http.Error(w, "missing programID", http.StatusBadRequest)
 			return
 		}
-
-		// Some clients send ".../EPxxxxxx.jpg" — normalize it.
 		programID := strings.TrimSuffix(parts[0], ".jpg")
+
+		// Global pause?
+		if block, rem := shouldBlockGlobal(); block {
+			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", rem.Seconds()))
+			http.Error(w, "image downloads paused due to upstream limits", http.StatusTooManyRequests)
+			logger.Warn("Proxy: global pause in effect; denying image download", "programID", programID, "remaining", rem)
+			return
+		}
 
 		// Ensure image folder exists
 		folderImage := Config.Options.Images.Path
@@ -149,7 +168,6 @@ func StartServer(dir string, port string) {
 				serveFileCached(w, r, filePath)
 				return
 			}
-			// Index pointed to a file that no longer exists; drop it.
 			logger.Warn("Proxy: index stale, removing mapping", "programID", programID, "imageID", imgID)
 			_ = indexDelete(programID)
 		}
@@ -172,7 +190,7 @@ func StartServer(dir string, port string) {
 
 		logger.Info("Proxy: resolved image candidate", "programID", programID, "uri", chosen.URI, "aspect", chosen.Aspect, "category", chosen.Category, "w", chosen.Width, "h", chosen.Height)
 
-		// Obtain (or reuse) a token
+		// Token
 		token, err := getSDToken()
 		if err != nil {
 			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
@@ -191,13 +209,13 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// 4) Not cached yet → download (retry once on 401 with forced refresh)
+		// 4) Download (retry once on 401)
 		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
 
 		client := &http.Client{Timeout: 20 * time.Second}
 		fetch := func(url string) (*http.Response, error) {
 			req, _ := http.NewRequest("GET", url, nil)
-			req.Header.Set("User-Agent", userAgent()) // versioned UA per SD docs
+			req.Header.Set("User-Agent", userAgent())
 			return client.Do(req)
 		}
 
@@ -207,7 +225,6 @@ func StartServer(dir string, port string) {
 			http.Error(w, "fetch failed", http.StatusBadGateway)
 			return
 		}
-		// Retry once with a fresh token on 401 Unauthorized
 		if resp.StatusCode == http.StatusUnauthorized {
 			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
 			resp.Body.Close()
@@ -227,7 +244,7 @@ func StartServer(dir string, port string) {
 		}
 		defer resp.Body.Close()
 
-		// Read the entire body so we can validate it's actually an image
+		// Read entire body for validation
 		buf, rerr := io.ReadAll(resp.Body)
 		if rerr != nil {
 			logger.Error("Proxy: read body failed", "programID", programID, "imageID", imageID, "error", rerr)
@@ -235,43 +252,48 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// If SD returned non-200, do not save; pass the status upstream
+		// Non-200 -> do not save
 		if resp.StatusCode != http.StatusOK {
-			logger.Warn("Proxy: SD returned non-200", "programID", programID, "imageID", imageID, "status", resp.Status, "body", string(buf))
+			logger.Warn("Proxy: SD returned non-200", "programID", programID, "imageID", imageID, "status", resp.Status, "body", truncate(string(buf), 256))
 			http.Error(w, resp.Status, resp.StatusCode)
 			return
 		}
 
-		// Validate Content-Type; SD can return 200 with JSON error payloads
+		// Validate payload is an image; SD can return JSON with 200 OK.
 		ct := resp.Header.Get("Content-Type")
-		// Fallback to sniffing if header missing
 		if ct == "" {
 			ct = http.DetectContentType(buf)
 		}
-		isImage := strings.HasPrefix(strings.ToLower(ct), "image/")
+		isImage := strings.HasPrefix(strings.ToLower(ct), "image/") && looksLikeImage(buf)
 		if !isImage {
-			// Try to detect obvious JSON error and convert to a useful status for clients
-			msg := string(buf)
-			status := http.StatusBadGateway
-			if strings.Contains(msg, "MAX_IMAGE_DOWNLOADS_TRIAL") {
-				// Map trial quota error to 429 Too Many Requests
-				status = http.StatusTooManyRequests
-			} else if strings.Contains(msg, "UNAUTHORIZED") || strings.Contains(msg, "INVALID") {
-				status = http.StatusUnauthorized
+			// If body contains quota message, pause globally until next UTC midnight + 5 minutes.
+			bodyText := string(buf)
+			if strings.Contains(bodyText, "Counter resets at 00:00Z.") {
+				ref := sdErrorTime(buf)
+				if ref.IsZero() {
+					ref = time.Now().UTC()
+				}
+				until := nextUTCMidnightPlus(ref, 5)
+				setGlobalPauseUntil(until, "SD quota message: Counter resets at 00:00Z.")
+				retryAfter := time.Until(until)
+
+				logger.Warn("Proxy: SD returned quota message; pausing all image downloads",
+					"programID", programID, "imageID", imageID,
+					"retry_after", retryAfter.String(), "until_utc", until, "body", truncate(bodyText, 256))
+
+				w.Header().Set("Retry-After", fmt.Sprintf("%.0f", retryAfter.Seconds()))
+				http.Error(w, "image downloads paused until next UTC midnight window", http.StatusTooManyRequests)
+				return
 			}
-			logger.Warn("Proxy: SD returned non-image payload; not caching", "programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(msg, 256))
-			http.Error(w, "Schedules Direct returned a non-image payload", status)
+
+			// Generic non-image payload (no specific reset hint) — do not save; return 502
+			logger.Warn("Proxy: SD returned non-image payload; not caching",
+				"programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(bodyText, 256))
+			http.Error(w, "Schedules Direct returned a non-image payload", http.StatusBadGateway)
 			return
 		}
 
-		// Optional: basic magic check for common formats to avoid bad saves
-		if !looksLikeImage(buf) {
-			logger.Warn("Proxy: payload failed image magic check; not caching", "programID", programID, "imageID", imageID, "content_type", ct)
-			http.Error(w, "invalid image payload", http.StatusBadGateway)
-			return
-		}
-
-		// Save to disk once (by imageID)
+		// Save to disk
 		if err := os.WriteFile(filePath, buf, 0644); err != nil {
 			logger.Error("Proxy: save failed (write)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
 			http.Error(w, "save failed", http.StatusInternalServerError)
@@ -279,14 +301,13 @@ func StartServer(dir string, port string) {
 		}
 		logger.Info("Proxy: saved image", "programID", programID, "imageID", imageID, "path", filePath)
 
-		// Update the persisted index and serve
+		// Update index and serve
 		_ = indexSet(programID, imageID)
-
 		logger.Info("Proxy: serve freshly cached", "programID", programID, "imageID", imageID, "path", filePath)
 		serveFileCached(w, r, filePath)
 	})
 
-	// Static file server at "/"
+	// Static server
 	fs := http.FileServer(http.Dir(dir))
 	mux.Handle("/", fs)
 
@@ -326,7 +347,7 @@ func looksLikeImage(b []byte) bool {
 	if len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP" {
 		return true
 	}
-	// Fallback: treat as image if HTTP sniffing would call it image/*
+	// Fallback: sniff
 	typ := http.DetectContentType(b)
 	return strings.HasPrefix(strings.ToLower(typ), "image/")
 }
