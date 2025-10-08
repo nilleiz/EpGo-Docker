@@ -48,6 +48,10 @@ func loadTokenFromDisk() {
 		if pt.Token != "" && time.Now().UTC().Before(pt.TokenExpiry) {
 			sdToken = pt.Token
 			sdTokenExpiry = pt.TokenExpiry
+			if logger != nil {
+				logger.Info("SD token: loaded from disk",
+					"expires_utc", sdTokenExpiry)
+			}
 		}
 	}
 }
@@ -60,6 +64,9 @@ func saveTokenToDisk(tok string, exp time.Time) {
 		TokenExpiry: exp.UTC(),
 	}, "", "  ")
 	_ = os.WriteFile(path, blob, 0644)
+	if logger != nil {
+		logger.Info("SD token: saved to disk", "expires_utc", exp.UTC())
+	}
 }
 
 // getSDToken returns a valid Schedules Direct token.
@@ -109,15 +116,26 @@ func getSDToken() (string, error) {
 	// Extra safety at boot: if we already have a token and it's still valid,
 	// avoid relogin storms within the first few minutes.
 	if token != "" && now.Sub(bootTime) < 5*time.Minute && now.Before(exp) {
+		if logger != nil {
+			logger.Info("SD token: reusing boot-time token (no login)",
+				"expires_utc", exp)
+		}
 		return token, nil
 	}
 
 	// Do a real login once
+	if logger != nil {
+		logger.Warn("SD token: performing LOGIN to Schedules Direct (serialized)")
+	}
+
 	var sd SD
 	if err := sd.Init(); err != nil {
 		return "", err
 	}
 	if err := sd.Login(); err != nil {
+		if logger != nil {
+			logger.Error("SD token: LOGIN failed", "error", err)
+		}
 		return "", err
 	}
 
@@ -131,12 +149,19 @@ func getSDToken() (string, error) {
 	sdTokenMu.Unlock()
 	saveTokenToDisk(newToken, newExp)
 
+	if logger != nil {
+		logger.Info("SD token: LOGIN succeeded", "expires_utc", newExp)
+	}
+
 	return newToken, nil
 }
 
 // forceRefreshToken clears the cached token and performs a refresh once.
 // Used to retry once on 401 Unauthorized.
 func forceRefreshToken() (string, error) {
+	if logger != nil {
+		logger.Warn("SD token: forced refresh requested (clearing token)")
+	}
 	sdTokenMu.Lock()
 	sdToken = ""
 	sdTokenExpiry = time.Time{}
