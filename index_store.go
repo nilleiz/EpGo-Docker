@@ -8,7 +8,12 @@ import (
 	"sync"
 )
 
-// in-memory index (persisted to sidecar JSON file)
+// ProgramID -> imageID persistent index used by the proxy to serve cached files
+// even if metadata for a ProgramID isn't loaded yet.
+//
+// The index is stored in a sidecar JSON file next to your Cache file, e.g.:
+//   /app/config_cache.imgindex.json
+
 var (
 	indexOnce   sync.Once
 	indexMu     sync.RWMutex
@@ -18,10 +23,10 @@ var (
 )
 
 func indexFilePath() string {
-	// Sidecar next to the cache file, e.g. /app/config_cache.imgindex.json
+	// Sidecar next to the cache file
 	p := Config.Files.Cache
 	if p == "" {
-		// Fall back to a safe default in /app (matches typical container path)
+		// Fallback default within container
 		return "/app/config_cache.imgindex.json"
 	}
 	ext := filepath.Ext(p)
@@ -37,9 +42,8 @@ func indexInit() {
 		if dir := filepath.Dir(indexPathV); dir != "" && dir != "." {
 			_ = os.MkdirAll(dir, 0755)
 		}
-		// Try load existing
-		data, err := os.ReadFile(indexPathV)
-		if err == nil && len(data) > 0 {
+		// Load if present
+		if data, err := os.ReadFile(indexPathV); err == nil && len(data) > 0 {
 			_ = json.Unmarshal(data, &indexMap)
 		}
 		indexLoaded = true

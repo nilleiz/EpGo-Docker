@@ -23,7 +23,7 @@ func ensureProgramMetadata(programID string) bool {
 
 	logger.Info("Proxy: metadata missing, fetching", "programID", programID)
 
-	// Prepare SD client with a reusable token (no login storms)
+	// Prepare SD client with a reusable token (avoid login storms)
 	var sd SD
 	if err := sd.Init(); err != nil {
 		logger.Error("Proxy: SD init failed", "programID", programID, "error", err)
@@ -84,33 +84,28 @@ func ensureProgramMetadata(programID string) bool {
 	return false
 }
 
-// normalizeFetchURL builds the final SD image URL and also returns the imageID we store under.
-// - If chosenURI is a full SD URL, we reuse its path (keeping the .jpg) and replace/attach our fresh token.
-// - If chosenURI is just an ID (with or without .jpg), we construct the canonical image URL.
+// Build the final SD image URL and return the imageID we store under.
+// - If chosenURI is a full SD URL, reuse its path (.jpg) and replace/attach our fresh token.
+// - If chosenURI is just an ID (with or without .jpg), construct canonical URL.
 func normalizeFetchURL(chosenURI, freshToken string) (imageID string, imageURL string) {
 	const base = "https://json.schedulesdirect.org/20141201/image/"
 
-	// Full URL case
 	if strings.HasPrefix(chosenURI, "http://") || strings.HasPrefix(chosenURI, "https://") {
 		u, err := url.Parse(chosenURI)
 		if err == nil {
-			// path ends in "<id>.jpg" or "<id>"
 			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 			if len(parts) > 0 {
 				last := parts[len(parts)-1]
 				id := strings.TrimSuffix(last, ".jpg")
 				imageID = id
 			}
-			// Replace token query param with our fresh token
 			q := u.Query()
 			q.Set("token", freshToken)
 			u.RawQuery = q.Encode()
 			return imageID, u.String()
 		}
-		// If parse fails, fall through to ID mode below
 	}
 
-	// ID-only case
 	id := strings.TrimSuffix(chosenURI, ".jpg")
 	imageID = id
 	imageURL = fmt.Sprintf("%s%s.jpg?token=%s", base, id, freshToken)
@@ -120,14 +115,12 @@ func normalizeFetchURL(chosenURI, freshToken string) (imageID string, imageURL s
 // StartServer starts a local HTTP server: static files + lazy SD image proxy.
 // HTTPS termination should be done by your reverse proxy (Cloudflare/Nginx).
 func StartServer(dir string, port string) {
-	// Ensure the ProgramID→imageID index is loaded
+	// Load the ProgramID→imageID index
 	indexInit()
 
 	mux := http.NewServeMux()
 
 	// On-demand SD image proxy: /proxy/sd/{programID}
-	// First request downloads from SD (with a fresh token) and stores by imageID.
-	// Next requests are served from local disk (via index or imageID lookup).
 	mux.HandleFunc("/proxy/sd/", func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/sd/"), "/")
 		if len(parts) == 0 || parts[0] == "" {
@@ -148,7 +141,7 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// ---------- 1) Serve via ProgramID -> imageID persisted index (no metadata needed) ----------
+		// 1) Try ProgramID → imageID index (no metadata needed)
 		if imgID, ok := indexGet(programID); ok && imgID != "" {
 			filePath := filepath.Join(folderImage, imgID+".jpg")
 			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
@@ -158,10 +151,10 @@ func StartServer(dir string, port string) {
 			}
 			// Index pointed to a file that no longer exists; drop it.
 			logger.Warn("Proxy: index stale, removing mapping", "programID", programID, "imageID", imgID)
-			indexDelete(programID)
+			_ = indexDelete(programID)
 		}
 
-		// ---------- 2) Resolve via metadata (or fetch-on-miss), then serve or download ----------
+		// 2) Resolve via metadata (or fetch-on-miss)
 		chosen, ok := Cache.resolveSDImageForProgram(programID)
 		if !ok || chosen.URI == "" {
 			if ensureProgramMetadata(programID) {
@@ -179,7 +172,7 @@ func StartServer(dir string, port string) {
 
 		logger.Info("Proxy: resolved image candidate", "programID", programID, "uri", chosen.URI, "aspect", chosen.Aspect, "category", chosen.Category, "w", chosen.Width, "h", chosen.Height)
 
-		// Obtain (or reuse) a token — does NOT login unless necessary
+		// Obtain (or reuse) a token
 		token, err := getSDToken()
 		if err != nil {
 			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
@@ -190,7 +183,7 @@ func StartServer(dir string, port string) {
 		imageID, imageURL := normalizeFetchURL(chosen.URI, token)
 		filePath := filepath.Join(folderImage, imageID+".jpg")
 
-		// Serve from disk if present (and update index)
+		// 3) Serve from disk if present (and update index)
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
 			logger.Info("Proxy: serve from cache (by imageID)", "programID", programID, "imageID", imageID, "path", filePath)
 			_ = indexSet(programID, imageID)
@@ -198,13 +191,13 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// Not cached yet → fetch once (retry once on 401 with forced refresh)
+		// 4) Not cached yet → download (retry once on 401 with forced refresh)
 		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
 
 		client := &http.Client{Timeout: 20 * time.Second}
 		fetch := func(url string) (*http.Response, error) {
 			req, _ := http.NewRequest("GET", url, nil)
-			req.Header.Set("User-Agent", AppName)
+			req.Header.Set("User-Agent", userAgent()) // versioned UA per SD docs
 			return client.Do(req)
 		}
 
@@ -214,7 +207,7 @@ func StartServer(dir string, port string) {
 			http.Error(w, "fetch failed", http.StatusBadGateway)
 			return
 		}
-		// If token expired/invalid, refresh once and retry.
+		// Retry once with a fresh token on 401 Unauthorized
 		if resp.StatusCode == http.StatusUnauthorized {
 			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
 			resp.Body.Close()

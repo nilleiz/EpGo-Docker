@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-// Global token state (shared across the process)
+// Global token state shared across the process.
+// Ensures we log in at most ~once per 24h and avoid "too many logins".
 var (
 	sdToken        string
 	sdTokenExpiry  time.Time
@@ -14,7 +15,8 @@ var (
 )
 
 // getSDToken returns a valid Schedules Direct token.
-// It reuses the existing token until it's near expiry, then refreshes (once).
+// - Reuses the cached token until near expiry (10 min margin)
+// - Serializes refresh so only one goroutine logs in
 func getSDToken() (string, error) {
 	// Fast path: read lock
 	sdTokenMu.RLock()
@@ -22,18 +24,17 @@ func getSDToken() (string, error) {
 	exp := sdTokenExpiry
 	sdTokenMu.RUnlock()
 
-	// Safety window before expiry (avoid razor-thin refreshes)
 	const refreshMargin = 10 * time.Minute
 	now := time.Now()
 	if token != "" && now.Before(exp.Add(-refreshMargin)) {
 		return token, nil
 	}
 
-	// Slow path: refresh, but serialize so only one goroutine logs in
+	// Slow path: serialize refresh
 	sdRefreshMutex.Lock()
 	defer sdRefreshMutex.Unlock()
 
-	// Re-check after acquiring the lock (another goroutine might have refreshed)
+	// Re-check after acquiring the lock
 	sdTokenMu.RLock()
 	token = sdToken
 	exp = sdTokenExpiry
@@ -51,7 +52,7 @@ func getSDToken() (string, error) {
 		return "", err
 	}
 
-	// sd.Login() filled sd.Token and sd.Resp.Login.TokenExpires
+	// sd.Login sets sd.Token and sd.Resp.Login.TokenExpires (unix seconds)
 	newToken := sd.Token
 	newExp := time.Unix(sd.Resp.Login.TokenExpires, 0)
 
@@ -64,6 +65,7 @@ func getSDToken() (string, error) {
 }
 
 // forceRefreshToken clears the cached token and performs a refresh once.
+// Used to retry once on 401 Unauthorized.
 func forceRefreshToken() (string, error) {
 	sdTokenMu.Lock()
 	sdToken = ""
