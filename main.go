@@ -26,7 +26,6 @@ func main() {
 	var config = flag.String("config", "", "= Get data from Schedules Direct with configuration file. [filename.yaml]")
 	var version = flag.Bool("version", false, "= Get version")
 	var serve = flag.String("serve", "", "= Start a local HTTP server to serve files from the specified directory. [directory:port]")
-
 	var h = flag.Bool("h", false, ": Show help")
 
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -47,8 +46,16 @@ func main() {
 	}
 
 	if *version {
-		// Keep printing the upstream EPGo version here (as before)
 		fmt.Println(Version)
+		os.Exit(0)
+	}
+
+	// Handle: epgo -configure filename.yaml
+	if len(*configure) != 0 {
+		if err := Configure(*configure); err != nil {
+			logger.Error("unable to create the configuration file", "error", err)
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 
@@ -68,15 +75,13 @@ func main() {
 	// Normal mode: epgo -config file.yaml
 	if len(*config) != 0 {
 		var sd SD
-		// Try to grab EPG; if this fails (e.g., SD account blocked), we still start the proxy if enabled.
+		// Try to grab EPG; even if it fails, we may still start the proxy (if enabled).
 		err := sd.Update(*config)
 		if err != nil {
 			logger.Error("unable to get data from Schedules Direct", "error", err)
 		}
 
-		// If the YAML had Server.Enable: true, start the proxy regardless of EPG result.
-		// This ensures cached artwork/previously downloaded files remain available,
-		// and clients see an HTTP service even when SD is temporarily unavailable.
+		// If Server.Enable is true, start the proxy regardless of EPG result.
 		if Config.Server.Enable {
 			imgDir := strings.TrimSpace(Config.Options.Images.Path)
 			if imgDir == "" {
@@ -99,15 +104,14 @@ func main() {
 			return
 		}
 
-		// If server is not enabled, preserve existing behavior:
-		// exit non-zero on EPG error, else exit success.
+		// If the server isn't enabled, preserve exit semantics.
 		if err != nil {
 			os.Exit(1)
 		}
 		return
 	}
 
-	// If neither -serve nor -config was provided, show usage and exit.
+	// If neither -serve nor -config nor -configure was provided, show usage and exit.
 	flag.Usage()
 	os.Exit(2)
 }
