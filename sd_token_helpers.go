@@ -69,12 +69,50 @@ func saveTokenToDisk(tok string, exp time.Time) {
 	}
 }
 
+// ---- helpers to interpret SD error payloads ----
+
+type sdLoginErr struct {
+	Response  string `json:"response"`
+	Code      int    `json:"code"`
+	Message   string `json:"message"`
+	DateTime  string `json:"datetime"`
+	ServerID  string `json:"serverID"`
+	Token     string `json:"token"`
+	ServerTime int64 `json:"serverTime"`
+}
+
+func parseSDLoginErr(b []byte) (sdLoginErr, bool) {
+	var e sdLoginErr
+	if err := json.Unmarshal(b, &e); err != nil {
+		return e, false
+	}
+	// consider valid if either "response" or "code" is populated
+	if e.Response == "" && e.Code == 0 && e.Message == "" {
+		return e, false
+	}
+	return e, true
+}
+
+func refTimeFromErr(e sdLoginErr) time.Time {
+	// Prefer serverTime epoch, then RFC3339 datetime, else now UTC
+	if e.ServerTime > 0 {
+		return time.Unix(e.ServerTime, 0).UTC()
+	}
+	if e.DateTime != "" {
+		if t, err := time.Parse(time.RFC3339, e.DateTime); err == nil {
+			return t.UTC()
+		}
+	}
+	return time.Now().UTC()
+}
+
 // getSDToken returns a valid Schedules Direct token.
 // Behavior:
 //   - On first call, tries to load a persisted token from disk.
 //   - Reuses token until near expiry (10 min margin).
 //   - Serializes refresh so only one goroutine logs in.
 //   - Enforces a minimum spacing at boot to avoid multiple logins.
+//   - If SD responds with TOO_MANY_LOGINS (4009), set a global pause until next UTC midnight +5m.
 func getSDToken() (string, error) {
 	// Initial lazy load from disk
 	sdTokenMu.RLock()
@@ -132,7 +170,21 @@ func getSDToken() (string, error) {
 	if err := sd.Init(); err != nil {
 		return "", err
 	}
+	// sd.Login() populates sd.Resp.Login.Body even on non-200
 	if err := sd.Login(); err != nil {
+		// Inspect body for TOO_MANY_LOGINS (code 4009)
+		if e, ok := parseSDLoginErr(sd.Resp.Body); ok {
+			if strings.EqualFold(e.Response, "TOO_MANY_LOGINS") || e.Code == 4009 {
+				// Pause globally until next UTC midnight + 5 minutes
+				ref := refTimeFromErr(e)
+				until := nextUTCMidnightPlus(ref, 5)
+				setGlobalPauseUntil(until, "TOO_MANY_LOGINS (403) — login disabled by SD")
+				if logger != nil {
+					logger.Error("SD token: login disabled due to TOO_MANY_LOGINS; global pause set",
+						"retry_at_utc", until, "message", e.Message)
+				}
+			}
+		}
 		if logger != nil {
 			logger.Error("SD token: LOGIN failed", "error", err)
 		}
