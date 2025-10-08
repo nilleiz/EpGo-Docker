@@ -29,9 +29,11 @@ func Configure(filename string) (err error) {
 		return err
 	}
 
+	// If credentials exist, use the cached token gate and then check status
 	if len(Config.Account.Username) != 0 || len(Config.Account.Password) != 0 {
-		sd.Login()
-		sd.Status()
+		if err := applyCachedToken(&sd); err == nil {
+			_ = sd.Status()
+		}
 	}
 
 	for {
@@ -52,13 +54,12 @@ func Configure(filename string) (err error) {
 		menu.Entry[1] = entry
 		if len(Config.Account.Username) == 0 || len(Config.Account.Password) == 0 {
 			entry.account()
-			err = sd.Login()
-			if err != nil {
+			// Acquire token via cache gate; if it fails, abort config
+			if err := applyCachedToken(&sd); err != nil {
 				os.RemoveAll(Config.File + ".yaml")
 				os.Exit(0)
 			}
-			sd.Status()
-
+			_ = sd.Status()
 		}
 
 		// Add Lineup
@@ -93,23 +94,25 @@ func Configure(filename string) (err error) {
 
 		case 1:
 			entry.account()
-			sd.Login()
-			sd.Status()
+			// Re-acquire token (in case credentials changed)
+			if err := applyCachedToken(&sd); err == nil {
+				_ = sd.Status()
+			}
 
 		case 2:
 			entry.addLineup(&sd)
-			sd.Status()
+			_ = sd.Status()
 
 		case 3:
 			entry.removeLineup(&sd)
-			sd.Status()
+			_ = sd.Status()
 
 		case 4:
 			entry.manageChannels(&sd)
-			sd.Status()
+			_ = sd.Status()
 
 		case 5:
-			sd.Update(filename)
+			_ = sd.Update(filename)
 
 		}
 

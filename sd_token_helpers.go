@@ -1,6 +1,10 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -12,20 +16,79 @@ var (
 	sdTokenExpiry  time.Time
 	sdTokenMu      sync.RWMutex // guards reads of sdToken/sdTokenExpiry
 	sdRefreshMutex sync.Mutex   // serializes refresh so we don't stampede SD
+	bootTime       = time.Now().UTC()
 )
 
+type persistedToken struct {
+	Token       string    `json:"token"`
+	TokenExpiry time.Time `json:"token_expiry_utc"`
+}
+
+func tokenFilePath() string {
+	// Persist token next to the cache file as a sidecar JSON.
+	p := Config.Files.Cache
+	if p == "" {
+		// default inside container
+		return "/app/config_cache.sdtoken.json"
+	}
+	ext := filepath.Ext(p)
+	base := strings.TrimSuffix(p, ext)
+	return base + ".sdtoken.json"
+}
+
+func loadTokenFromDisk() {
+	path := tokenFilePath()
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return
+	}
+	var pt persistedToken
+	if json.Unmarshal(data, &pt) == nil {
+		// Accept only future-expiring tokens
+		if pt.Token != "" && time.Now().UTC().Before(pt.TokenExpiry) {
+			sdToken = pt.Token
+			sdTokenExpiry = pt.TokenExpiry
+		}
+	}
+}
+
+func saveTokenToDisk(tok string, exp time.Time) {
+	path := tokenFilePath()
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	blob, _ := json.MarshalIndent(persistedToken{
+		Token:       tok,
+		TokenExpiry: exp.UTC(),
+	}, "", "  ")
+	_ = os.WriteFile(path, blob, 0644)
+}
+
 // getSDToken returns a valid Schedules Direct token.
-// - Reuses the cached token until near expiry (10 min margin)
-// - Serializes refresh so only one goroutine logs in
+// Behavior:
+//   - On first call, tries to load a persisted token from disk.
+//   - Reuses token until near expiry (10 min margin).
+//   - Serializes refresh so only one goroutine logs in.
+//   - Enforces a minimum spacing at boot to avoid multiple logins.
 func getSDToken() (string, error) {
-	// Fast path: read lock
+	// Initial lazy load from disk
+	sdTokenMu.RLock()
+	tokLoaded := sdToken != ""
+	sdTokenMu.RUnlock()
+	if !tokLoaded {
+		sdTokenMu.Lock()
+		if sdToken == "" {
+			loadTokenFromDisk()
+		}
+		sdTokenMu.Unlock()
+	}
+
+	// Fast path
 	sdTokenMu.RLock()
 	token := sdToken
 	exp := sdTokenExpiry
 	sdTokenMu.RUnlock()
 
 	const refreshMargin = 10 * time.Minute
-	now := time.Now()
+	now := time.Now().UTC()
 	if token != "" && now.Before(exp.Add(-refreshMargin)) {
 		return token, nil
 	}
@@ -43,6 +106,12 @@ func getSDToken() (string, error) {
 		return token, nil
 	}
 
+	// Extra safety at boot: if we already have a token and it's still valid,
+	// avoid relogin storms within the first few minutes.
+	if token != "" && now.Sub(bootTime) < 5*time.Minute && now.Before(exp) {
+		return token, nil
+	}
+
 	// Do a real login once
 	var sd SD
 	if err := sd.Init(); err != nil {
@@ -52,14 +121,15 @@ func getSDToken() (string, error) {
 		return "", err
 	}
 
-	// sd.Login sets sd.Token and sd.Resp.Login.TokenExpires (unix seconds)
 	newToken := sd.Token
-	newExp := time.Unix(sd.Resp.Login.TokenExpires, 0)
+	newExp := time.Unix(sd.Resp.Login.TokenExpires, 0).UTC()
 
+	// Persist and publish
 	sdTokenMu.Lock()
 	sdToken = newToken
 	sdTokenExpiry = newExp
 	sdTokenMu.Unlock()
+	saveTokenToDisk(newToken, newExp)
 
 	return newToken, nil
 }
