@@ -227,27 +227,56 @@ func StartServer(dir string, port string) {
 		}
 		defer resp.Body.Close()
 
+		// Read the entire body so we can validate it's actually an image
+		buf, rerr := io.ReadAll(resp.Body)
+		if rerr != nil {
+			logger.Error("Proxy: read body failed", "programID", programID, "imageID", imageID, "error", rerr)
+			http.Error(w, "read failed", http.StatusBadGateway)
+			return
+		}
+
+		// If SD returned non-200, do not save; pass the status upstream
 		if resp.StatusCode != http.StatusOK {
-			logger.Warn("Proxy: SD returned non-200", "programID", programID, "imageID", imageID, "status", resp.Status)
+			logger.Warn("Proxy: SD returned non-200", "programID", programID, "imageID", imageID, "status", resp.Status, "body", string(buf))
 			http.Error(w, resp.Status, resp.StatusCode)
 			return
 		}
 
-		// Save to disk once (by imageID)
-		out, err := os.Create(filePath)
-		if err != nil {
-			logger.Error("Proxy: save failed (create)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
-			http.Error(w, "save failed", http.StatusInternalServerError)
+		// Validate Content-Type; SD can return 200 with JSON error payloads
+		ct := resp.Header.Get("Content-Type")
+		// Fallback to sniffing if header missing
+		if ct == "" {
+			ct = http.DetectContentType(buf)
+		}
+		isImage := strings.HasPrefix(strings.ToLower(ct), "image/")
+		if !isImage {
+			// Try to detect obvious JSON error and convert to a useful status for clients
+			msg := string(buf)
+			status := http.StatusBadGateway
+			if strings.Contains(msg, "MAX_IMAGE_DOWNLOADS_TRIAL") {
+				// Map trial quota error to 429 Too Many Requests
+				status = http.StatusTooManyRequests
+			} else if strings.Contains(msg, "UNAUTHORIZED") || strings.Contains(msg, "INVALID") {
+				status = http.StatusUnauthorized
+			}
+			logger.Warn("Proxy: SD returned non-image payload; not caching", "programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(msg, 256))
+			http.Error(w, "Schedules Direct returned a non-image payload", status)
 			return
 		}
-		if _, err = io.Copy(out, resp.Body); err != nil {
-			out.Close()
-			_ = os.Remove(filePath)
+
+		// Optional: basic magic check for common formats to avoid bad saves
+		if !looksLikeImage(buf) {
+			logger.Warn("Proxy: payload failed image magic check; not caching", "programID", programID, "imageID", imageID, "content_type", ct)
+			http.Error(w, "invalid image payload", http.StatusBadGateway)
+			return
+		}
+
+		// Save to disk once (by imageID)
+		if err := os.WriteFile(filePath, buf, 0644); err != nil {
 			logger.Error("Proxy: save failed (write)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
 			http.Error(w, "save failed", http.StatusInternalServerError)
 			return
 		}
-		out.Close()
 		logger.Info("Proxy: saved image", "programID", programID, "imageID", imageID, "path", filePath)
 
 		// Update the persisted index and serve
@@ -277,4 +306,38 @@ func serveFileCached(w http.ResponseWriter, r *http.Request, path string) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("Last-Modified", fi.ModTime().UTC().Format(http.TimeFormat))
 	http.ServeFile(w, r, path)
+}
+
+// looksLikeImage does a minimal magic check so we don't save JSON/HTML as .jpg
+func looksLikeImage(b []byte) bool {
+	if len(b) < 12 {
+		return false
+	}
+	// JPEG: FF D8 FF
+	if b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF {
+		return true
+	}
+	// PNG: 89 50 4E 47 0D 0A 1A 0A
+	png := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+	if len(b) >= 8 && string(b[:8]) == string(png) {
+		return true
+	}
+	// WebP: "RIFF"...."WEBP"
+	if len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP" {
+		return true
+	}
+	// Fallback: treat as image if HTTP sniffing would call it image/*
+	typ := http.DetectContentType(b)
+	return strings.HasPrefix(strings.ToLower(typ), "image/")
+}
+
+// truncate utility for logging
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	if n <= 3 {
+		return s[:n]
+	}
+	return s[:n-3] + "..."
 }
