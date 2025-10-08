@@ -9,8 +9,8 @@ import (
 var (
 	sdToken        string
 	sdTokenExpiry  time.Time
-	sdTokenMu      sync.RWMutex   // guards reads of sdToken/sdTokenExpiry
-	sdRefreshMutex sync.Mutex     // serializes refresh so we don't stampede SD
+	sdTokenMu      sync.RWMutex // guards reads of sdToken/sdTokenExpiry
+	sdRefreshMutex sync.Mutex   // serializes refresh so we don't stampede SD
 )
 
 // getSDToken returns a valid Schedules Direct token.
