@@ -78,30 +78,34 @@ func ensureProgramMetadata(programID string) bool {
 	return false
 }
 
-// normalizeFetchURL builds the final SD image URL and returns the imageID we store under.
-func normalizeFetchURL(chosenURI, freshToken string) (imageID string, imageURL string) {
-	const base = "https://json.schedulesdirect.org/20141201/image/"
-
-	if strings.HasPrefix(chosenURI, "http://") || strings.HasPrefix(chosenURI, "https://") {
-		u, err := url.Parse(chosenURI)
-		if err == nil {
-			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-			if len(parts) > 0 {
-				last := parts[len(parts)-1]
-				id := strings.TrimSuffix(last, ".jpg")
-				imageID = id
-			}
-			q := u.Query()
-			q.Set("token", freshToken)
-			u.RawQuery = q.Encode()
-			return imageID, u.String()
+// sdImageIDFromURI extracts the SD image ID from a URI or path-like string.
+func sdImageIDFromURI(uri string) string {
+	if uri == "" {
+		return ""
+	}
+	// If it's a URL, parse the path; else treat as path/ID
+	if strings.HasPrefix(uri, "http://") || strings.HasPrefix(uri, "https://") {
+		if u, err := url.Parse(uri); err == nil {
+			last := filepath.Base(u.Path)
+			return strings.TrimSuffix(last, ".jpg")
 		}
 	}
+	// trim trailing .jpg if present
+	return strings.TrimSuffix(filepath.Base(uri), ".jpg")
+}
 
-	id := strings.TrimSuffix(chosenURI, ".jpg")
-	imageID = id
-	imageURL = fmt.Sprintf("%s%s.jpg?token=%s", base, id, freshToken)
-	return imageID, imageURL
+// lookupImageMeta finds Category/Aspect/Width/Height of an image by programID+imageID.
+func lookupImageMeta(programID, imageID string) (category, aspect string, width, height int, ok bool) {
+	m, ok := Cache.Metadata[programID]
+	if !ok {
+		return "", "", 0, 0, false
+	}
+	for _, d := range m.Data {
+		if sdImageIDFromURI(d.URI) == imageID {
+			return d.Category, d.Aspect, d.Width, d.Height, true
+		}
+	}
+	return "", "", 0, 0, false
 }
 
 // sdErrorTime extracts a reference time from an SD JSON error body.
@@ -164,14 +168,35 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// --- PINNED MODE: serve exact /proxy/sd/{programID}/{imageID} ---
+		// --- PINNED MODE: /proxy/sd/{programID}/{imageID} ---
 		if imageID != "" {
 			filePath := filepath.Join(folderImage, imageID+".jpg")
 
+			logWithMeta := func(prefix string) {
+				cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID)
+				if ok {
+					logger.Info(prefix,
+						"programID", programID, "imageID", imageID,
+						"category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+				} else {
+					// Try to fetch metadata and retry once
+					if ensureProgramMetadata(programID) {
+						if cat2, asp2, w2, h2, ok2 := lookupImageMeta(programID, imageID); ok2 {
+							logger.Info(prefix,
+								"programID", programID, "imageID", imageID,
+								"category", cat2, "aspect", asp2, "w", w2, "h", h2, "path", filePath)
+							return
+						}
+					}
+					logger.Info(prefix+" (no meta)",
+						"programID", programID, "imageID", imageID, "path", filePath)
+				}
+			}
+
 			// 1) Serve from disk if present
 			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-				logger.Info("Proxy: serve pinned from cache", "programID", programID, "imageID", imageID, "path", filePath)
-				_ = indexSet(programID, imageID) // keep index fresh
+				logWithMeta("Proxy: serve pinned from cache")
+				_ = indexSet(programID, imageID)
 				serveFileCached(w, r, filePath)
 				return
 			}
@@ -265,17 +290,28 @@ func StartServer(dir string, port string) {
 				return
 			}
 			_ = indexSet(programID, imageID)
-			logger.Info("Proxy: serve freshly cached (pinned)", "programID", programID, "imageID", imageID, "path", filePath)
+			// Always report category (fetch metadata if missing)
+			logWithMeta("Proxy: serve freshly cached (pinned)")
 			serveFileCached(w, r, filePath)
 			return
 		}
 
-		// --- LEGACY MODE: /proxy/sd/{programID} (resolver path, unchanged determinism) ---
-		// 1) Try ProgramID → imageID index (no metadata needed)
+		// --- LEGACY MODE: /proxy/sd/{programID} (resolver path) ---
+		// 1) Try ProgramID → imageID index
 		if imgID, ok := indexGet(programID); ok && imgID != "" {
 			filePath := filepath.Join(folderImage, imgID+".jpg")
 			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-				logger.Info("Proxy: serve from cache (index hit)", "programID", programID, "imageID", imgID, "path", filePath)
+				// log with category (ensure metadata if missing)
+				if _, ok := lookupImageMeta(programID, imgID); !ok {
+					_ = ensureProgramMetadata(programID)
+				}
+				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
+					logger.Info("Proxy: serve from cache (index hit)",
+						"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+				} else {
+					logger.Info("Proxy: serve from cache (index hit, no meta)",
+						"programID", programID, "imageID", imgID, "path", filePath)
+				}
 				serveFileCached(w, r, filePath)
 				return
 			}
@@ -299,7 +335,12 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		logger.Info("Proxy: resolved image candidate", "programID", programID, "uri", chosen.URI, "aspect", chosen.Aspect, "category", chosen.Category, "w", chosen.Width, "h", chosen.Height)
+		// Category/Aspect/Size logging for resolved choice
+		logger.Info("Proxy: resolved image candidate",
+			"programID", programID,
+			"imageID", sdImageIDFromURI(chosen.URI),
+			"category", chosen.Category, "aspect", chosen.Aspect, "w", chosen.Width, "h", chosen.Height,
+			"uri", chosen.URI)
 
 		// Token
 		token, err := getSDToken()
@@ -309,12 +350,22 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		imageID, imageURL := normalizeFetchURL(chosen.URI, token)
+		imageID := sdImageIDFromURI(chosen.URI)
+		imageURL := fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
 		filePath := filepath.Join(folderImage, imageID+".jpg")
 
 		// 3) Serve from disk if present (and update index)
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-			logger.Info("Proxy: serve from cache (by imageID)", "programID", programID, "imageID", imageID, "path", filePath)
+			if _, ok := lookupImageMeta(programID, imageID); !ok {
+				_ = ensureProgramMetadata(programID)
+			}
+			if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+				logger.Info("Proxy: serve from cache (by imageID)",
+					"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+			} else {
+				logger.Info("Proxy: serve from cache (by imageID, no meta)",
+					"programID", programID, "imageID", imageID, "path", filePath)
+			}
 			_ = indexSet(programID, imageID)
 			serveFileCached(w, r, filePath)
 			return
@@ -340,7 +391,7 @@ func StartServer(dir string, port string) {
 			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
 			resp.Body.Close()
 			if token2, err2 := forceRefreshToken(); err2 == nil {
-				_, imageURL = normalizeFetchURL(chosen.URI, token2)
+				imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
 				resp, err = fetch(imageURL)
 				if err != nil {
 					logger.Error("Proxy: fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
@@ -397,7 +448,7 @@ func StartServer(dir string, port string) {
 				return
 			}
 
-			// Generic non-image payload (no specific reset hint) — do not save; return 502
+			// Generic non-image payload — do not save; return 502
 			logger.Warn("Proxy: SD returned non-image payload; not caching",
 				"programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(bodyText, 256))
 			http.Error(w, "Schedules Direct returned a non-image payload", http.StatusBadGateway)
@@ -412,9 +463,18 @@ func StartServer(dir string, port string) {
 		}
 		logger.Info("Proxy: saved image", "programID", programID, "imageID", imageID, "path", filePath)
 
-		// Update index and serve
+		// Update index and serve (log with category if possible)
 		_ = indexSet(programID, imageID)
-		logger.Info("Proxy: serve freshly cached", "programID", programID, "imageID", imageID, "path", filePath)
+		if _, ok := lookupImageMeta(programID, imageID); !ok {
+			_ = ensureProgramMetadata(programID)
+		}
+		if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+			logger.Info("Proxy: serve freshly cached",
+				"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+		} else {
+			logger.Info("Proxy: serve freshly cached (no meta)",
+				"programID", programID, "imageID", imageID, "path", filePath)
+		}
 		serveFileCached(w, r, filePath)
 	})
 
