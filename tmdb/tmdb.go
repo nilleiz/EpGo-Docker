@@ -7,13 +7,17 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
+	"time"
 )
 
 const (
 	tmdbURL           = "https://api.themoviedb.org/3/%s"
 	tmdbImageBase     = "https://image.tmdb.org/t/p"
 	defaultPosterSize = "w500" // sharper default for Plex posters
+	httpTimeout       = 8 * time.Second
+	userAgent         = "EpGo-Docker (+https://github.com/nilleiz/EpGo-Docker)"
 )
 
 // posterURL builds a full TMDb image URL from a path and size.
@@ -29,81 +33,40 @@ func posterURL(path, size string) string {
 	return fmt.Sprintf("%s/%s/%s", tmdbImageBase, size, path)
 }
 
-type Results struct {
-	TmdbResults []TmdbResults `json:"results"`
+type searchResponse struct {
+	Results []struct {
+		PosterPath string `json:"poster_path"`
+	} `json:"results"`
 }
 
-type TmdbResults struct {
-	BackdropPath     string  `json:"backdrop_path"`
-	ID               int     `json:"id"`
-	Title            string  `json:"title"`
-	OriginalTitle    string  `json:"original_title"`
-	Overview         string  `json:"overview"`
-	PosterPath       string  `json:"poster_path"`
-	MediaType        string  `json:"media_type"`
-	Adult            bool    `json:"adult"`
-	OriginalLanguage string  `json:"original_language"`
-	GenreIds         []int   `json:"genre_ids"`
-	Popularity       float64 `json:"popularity"`
-	ReleaseDate      string  `json:"release_date"`
-	Video            bool    `json:"video"`
-	VoteAverage      float64 `json:"vote_average"`
-	VoteCount        int     `json:"vote_count"`
+// sanitizeQuery removes invisible cruft and trailing slashes/backslashes
+func sanitizeQuery(q string) string {
+	// remove those little badges some EPGs add
+	q = strings.ReplaceAll(q, "ᴺᵉʷ", "")
+	q = strings.ReplaceAll(q, "ᴸᶦᵛᵉ", "")
+	q = strings.TrimSpace(q)
+	q = strings.Trim(q, "\\/ \t\r\n")
+	spaceRe := regexp.MustCompile(`\s+`)
+	q = spaceRe.ReplaceAllString(q, " ")
+	return q
 }
 
-type ShowDetails struct {
-	Adult            bool          `json:"adult"`
-	BackdropPath     interface{}   `json:"backdrop_path"`
-	CreatedBy        []interface{} `json:"created_by"`
-	EpisodeRunTime   []interface{} `json:"episode_run_time"`
-	FirstAirDate     string        `json:"first_air_date"`
-	Genres           []interface{} `json:"genres"`
-	Homepage         string        `json:"homepage"`
-	ID               int           `json:"id"`
-	InProduction     bool          `json:"in_production"`
-	Languages        []string      `json:"languages"`
-	LastAirDate      interface{}   `json:"last_air_date"`
-	LastEpisodeToAir interface{}   `json:"last_episode_to_air"`
-	Name             string        `json:"name"`
-	NextEpisodeToAir interface{}   `json:"next_episode_to_air"`
-	Networks         []struct {
-		ID            int    `json:"id"`
-		LogoPath      string `json:"logo_path"`
-		Name          string `json:"name"`
-		OriginCountry string `json:"origin_country"`
-	} `json:"networks"`
-	NumberOfEpisodes    int           `json:"number_of_episodes"`
-	NumberOfSeasons     int           `json:"number_of_seasons"`
-	OriginCountry       []interface{} `json:"origin_country"`
-	OriginalLanguage    string        `json:"original_language"`
-	OriginalName        string        `json:"original_name"`
-	Overview            string        `json:"overview"`
-	Popularity          float64       `json:"popularity"`
-	PosterPath          interface{}   `json:"poster_path"`
-	ProductionCompanies []interface{} `json:"production_companies"`
-	ProductionCountries []struct {
-		Iso31661 string `json:"iso_3166_1"`
-		Name     string `json:"name"`
-	} `json:"production_countries"`
-	Seasons         []interface{} `json:"seasons"`
-	SpokenLanguages []struct {
-		EnglishName string `json:"english_name"`
-		Iso6391     string `json:"iso_639_1"`
-		Name        string `json:"name"`
-	} `json:"spoken_languages"`
-	Status      string `json:"status"`
-	Tagline     string `json:"tagline"`
-	Type        string `json:"type"`
-	VoteAverage int    `json:"vote_average"`
-	VoteCount   int    `json:"vote_count"`
+// depunctuate produces a softer variant for a second pass, e.g. "F1 Pressekonferenz"
+func depunctuate(q string) string {
+	re := regexp.MustCompile(`[^0-9A-Za-zÀ-ÖØ-öø-ÿ\s]`)
+	q = re.ReplaceAllString(q, " ")
+	spaceRe := regexp.MustCompile(`\s+`)
+	return strings.TrimSpace(spaceRe.ReplaceAllString(q, " "))
 }
 
-// https://api.themoviedb.org/3/search/multi?query=two%20towers&include_adult=false&language=en-US&page=1
+// SearchItem looks up a poster and returns a full TMDb image URL (w500 by default).
+// It caches only the poster "path" (not the full URL) so we can change sizes later.
 func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCacheFile string) (string, error) {
 	// 1) Clean search term
-	searchTerm = strings.ReplaceAll(searchTerm, "ᴺᵉʷ", "")
-	searchTerm = strings.ReplaceAll(searchTerm, "ᴸᶦᵛᵉ", "")
-	searchTerm = strings.TrimSpace(searchTerm)
+	origTerm := sanitizeQuery(searchTerm)
+	if origTerm == "" {
+		return "", nil
+	}
 
 	// 2) Endpoint by media type
 	var tmdbUrl string
@@ -115,59 +78,116 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 		tmdbUrl = fmt.Sprintf(tmdbURL, "search/movie")
 		mediaType = "MV"
 	default:
-		tmdbUrl = fmt.Sprintf(tmdbURL, "search/multi")
-		mediaType = "default"
+		// prefer tv for ambiguous EPG items
+		tmdbUrl = fmt.Sprintf(tmdbURL, "search/tv")
+		mediaType = "SH"
 	}
 
 	// 3) Cache hit?
-	if cachedPath, err := getImageURL(searchTerm+"-"+mediaType, imageCacheFile); err != nil {
-		return "", fmt.Errorf("error checking cache: %w", err)
+	if cachedPath, err := getImageURL(origTerm+"-"+mediaType, imageCacheFile); err != nil {
+		return "", fmt.Errorf("tmdb: error checking cache: %w", err)
 	} else if cachedPath != "" {
 		return posterURL(cachedPath, ""), nil // default w500
 	}
 
-	// 4) Remote request
-	token := "Bearer " + tmdbApiKey
-	req, err := http.NewRequest(http.MethodGet, tmdbUrl, nil)
-	if err != nil {
-		return "", fmt.Errorf("error creating request: %w", err)
-	}
-	q := req.URL.Query()
-	q.Add("query", searchTerm)
-	q.Add("language", "en")
-	q.Add("page", "1")
-	req.URL.RawQuery = q.Encode()
-	req.Header.Set("Authorization", token)
-	req.Header.Set("accept", "application/json")
+	// 4) HTTP client and request scaffold
+	client := &http.Client{Timeout: httpTimeout}
+	buildReq := func(qStr, lang string) (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodGet, tmdbUrl, nil)
+		if err != nil {
+			return nil, err
+		}
+		q := req.URL.Query()
+		q.Add("query", qStr)
+		if lang != "" {
+			q.Add("language", lang)
+		}
+		q.Add("page", "1")
+		q.Add("include_adult", "false")
+		req.URL.RawQuery = q.Encode()
 
-	resp, err := (&http.Client{}).Do(req)
-	if err != nil {
-		return "", fmt.Errorf("error making TMDB request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("tmdb response was non-200: %v", resp.Status)
-	}
-
-	var r Results
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return "", fmt.Errorf("error decoding TMDB response: %w", err)
-	}
-	if len(r.TmdbResults) == 0 {
-		return "", nil
+		// TMDb v4 Read Access Token (JWT) via Bearer
+		req.Header.Set("Authorization", "Bearer "+tmdbApiKey)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", userAgent)
+		return req, nil
 	}
 
-	posterPath := r.TmdbResults[0].PosterPath
+	// 5) Try German first, then English
+	langs := []string{"de-DE", "de", "en-US", "en"}
+	tryTerms := []string{origTerm}
+
+	// Add a depunctuated fallback if it differs
+	if soft := depunctuate(origTerm); soft != "" && !strings.EqualFold(soft, origTerm) {
+		tryTerms = append(tryTerms, soft)
+	}
+
+	var lastHTTPStatus int
+	var lastErr error
+	var posterPath string
+
+	for _, term := range tryTerms {
+		for _, lang := range langs {
+			req, err := buildReq(term, lang)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				// network error: remember, but continue
+				lastErr = err
+				continue
+			}
+			func() {
+				defer resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					// keep a hint for diagnostics; don't abort overall flow
+					lastHTTPStatus = resp.StatusCode
+					b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+					logger.Warn("tmdb non-200", "status", resp.Status, "lang", lang, "term", term, "body", string(b))
+					return
+				}
+
+				var r searchResponse
+				if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+					lastErr = fmt.Errorf("tmdb decode error: %w", err)
+					return
+				}
+				if len(r.Results) > 0 && r.Results[0].PosterPath != "" {
+					posterPath = r.Results[0].PosterPath
+				}
+			}()
+
+			if posterPath != "" {
+				break
+			}
+		}
+		if posterPath != "" {
+			break
+		}
+	}
+
+	// 6) If we still have nothing, return gracefully (no poster is not an error)
 	if posterPath == "" {
+		// if there was a hard error and *also* no result, surface the error to help debugging
+		if lastErr != nil {
+			return "", fmt.Errorf("tmdb lookup failed: %w", lastErr)
+		}
+		// non-200 without a concrete error: keep quiet; upstream can decide how to log
+		if lastHTTPStatus != 0 && lastHTTPStatus != http.StatusOK {
+			return "", fmt.Errorf("tmdb returned HTTP %d with no usable results", lastHTTPStatus)
+		}
 		return "", nil
 	}
 
-	// 5) Cache the *path* (not full URL)
-	if err := addImageToCache(searchTerm+"-"+mediaType, posterPath, imageCacheFile); err != nil {
-		logger.Error("error adding to cache", "error", err)
+	// 7) Cache the *path* (not full URL)
+	if err := addImageToCache(origTerm+"-"+mediaType, posterPath, imageCacheFile); err != nil {
+		logger.Error("tmdb: error adding to cache", "error", err)
 	}
 
-	// 6) Return full URL with default w500 size
+	// 8) Return full URL with default w500 size
 	return posterURL(posterPath, ""), nil
 }
 
