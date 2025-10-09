@@ -350,8 +350,10 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		imageID := sdImageIDFromURI(chosen.URI)
-		imageURL := fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
+		// IMPORTANT: do NOT redeclare imageID; reuse existing variable to avoid shadowing
+		var imageURL string
+		imageID = sdImageIDFromURI(chosen.URI)
+		imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
 		filePath := filepath.Join(folderImage, imageID+".jpg")
 
 		// 3) Serve from disk if present (and update index)
