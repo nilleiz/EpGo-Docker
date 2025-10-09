@@ -301,8 +301,8 @@ func StartServer(dir string, port string) {
 		if imgID, ok := indexGet(programID); ok && imgID != "" {
 			filePath := filepath.Join(folderImage, imgID+".jpg")
 			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-				// log with category (ensure metadata if missing)
-				if _, ok := lookupImageMeta(programID, imgID); !ok {
+				// ensure metadata loaded and log full details
+				if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok {
 					_ = ensureProgramMetadata(programID)
 				}
 				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
@@ -356,7 +356,7 @@ func StartServer(dir string, port string) {
 
 		// 3) Serve from disk if present (and update index)
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-			if _, ok := lookupImageMeta(programID, imageID); !ok {
+			if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok {
 				_ = ensureProgramMetadata(programID)
 			}
 			if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
@@ -465,7 +465,7 @@ func StartServer(dir string, port string) {
 
 		// Update index and serve (log with category if possible)
 		_ = indexSet(programID, imageID)
-		if _, ok := lookupImageMeta(programID, imageID); !ok {
+		if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok {
 			_ = ensureProgramMetadata(programID)
 		}
 		if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {

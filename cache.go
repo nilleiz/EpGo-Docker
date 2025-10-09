@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,20 +52,6 @@ func aspectRank(aspect string) int {
 	default:
 		return 99
 	}
-}
-
-func sdImageIDFromURI(uri string) string {
-	if uri == "" {
-		return ""
-	}
-	// If it's a URL, parse the path; else treat as path/ID
-	if strings.HasPrefix(uri, "http://") || strings.HasPrefix(uri, "https://") {
-		if u, err := url.Parse(uri); err == nil {
-			last := filepath.Base(u.Path)
-			return strings.TrimSuffix(last, ".jpg")
-		}
-	}
-	return strings.TrimSuffix(filepath.Base(uri), ".jpg")
 }
 
 // ------------------------------------------------------------------
