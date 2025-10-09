@@ -2,7 +2,6 @@ package main
 
 import (
 	"math"
-	"strconv"
 	"strings"
 )
 
@@ -120,34 +119,4 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 		return pickBest(loose), true
 	}
 	return Data{}, false
-}
-
-// --- helpers (duplicated here to keep this file self-contained) ---
-
-func parseAspect(s string) (float64, bool) {
-	s = strings.ToLower(strings.TrimSpace(s))
-	sep := "x"
-	if strings.Contains(s, ":") {
-		sep = ":"
-	}
-	parts := strings.Split(s, sep)
-	if len(parts) != 2 {
-		return 0, false
-	}
-	a, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
-	b, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
-	if err1 != nil || err2 != nil || a <= 0 || b <= 0 {
-		return 0, false
-	}
-	return a / b, true
-}
-
-func guessRatio(d Data) float64 {
-	if r, ok := parseAspect(d.Aspect); ok {
-		return r
-	}
-	if d.Width > 0 && d.Height > 0 {
-		return float64(d.Width) / float64(d.Height)
-	}
-	return 2.0 / 3.0
 }
