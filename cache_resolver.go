@@ -95,7 +95,7 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 		return Data{}, false
 	}
 
-	// Choose a winner by score; prefer good poster categories, "primary", then bigger width.
+	// Choose a winner by score; prefer good poster categories, then bigger width.
 	pickBest := func(list []Data) Data {
 		best := Data{}
 		bestScore := -1
@@ -103,9 +103,6 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 			score := 50
 			if isGoodPosterCategory(d.Category) {
 				score = 100
-			}
-			if d.Primary {
-				score += 8
 			}
 			score += d.Width / 40 // gentle bias for larger images
 
