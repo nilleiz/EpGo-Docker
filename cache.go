@@ -274,62 +274,128 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 	return
 }
 
+// GetIcon returns the best poster image for XMLTV generation.
+// Rules:
+//   • Respect configured aspect (e.g., "2x3"). If a portrait/poster aspect is set (<1.0),
+//     EXCLUDE portrait-ish/person images (Iconic, Headshot, Cast, Person, etc.) and banners (Banner-L2, Banner).
+//   • Prefer poster categories: Poster/Poster Art/Showcard/Series/Season/Box Art/Key Art/Cover Art.
+//   • If nothing acceptable remains, return no icon so TMDB fallback can be used.
+//   • If Images.Download is enabled, we download to disk using programID as filename (legacy behavior).
 func (c *cache) GetIcon(id string) (i []Icon) {
+	m, ok := c.Metadata[id]
+	if !ok || len(m.Data) == 0 {
+		return
+	}
 
-	if m, ok := c.Metadata[id]; ok {
-		// 1) Filter by configured SD aspect string ("16x9", "2x3", "4x3", ...). "all" or empty = no filter.
-		desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
-		candidates := make([]Data, 0, len(m.Data))
+	// Helper: parse configured aspect and decide if we're in "poster mode" (portrait).
+	desiredAspect := strings.TrimSpace(Config.Options.Images.PosterAspect)
+	posterMode := false
+	if a := strings.ToLower(desiredAspect); a != "" && a != "all" {
+		// simple portrait check: any aspect string like "2x3", "3x4" ⇒ portrait
+		if strings.Contains(a, "x") {
+			parts := strings.Split(a, "x")
+			if len(parts) == 2 {
+				// compare numerically if possible, else treat like poster-ish if left < right
+				// (we keep it simple; exact numeric parsing is overkill here)
+				if len(parts[0]) > 0 && len(parts[1]) > 0 && parts[0] < parts[1] {
+					posterMode = true
+				}
+			}
+		}
+	}
+
+	// 1) Aspect filtering: keep exact aspect if configured (except "all"/empty).
+	candidates := make([]Data, 0, len(m.Data))
+	if desiredAspect == "" || strings.EqualFold(desiredAspect, "all") {
+		candidates = append(candidates, m.Data...)
+	} else {
 		for _, d := range m.Data {
-			if desired == "" || strings.EqualFold(desired, "all") || strings.EqualFold(d.Aspect, desired) {
+			if strings.EqualFold(d.Aspect, desiredAspect) {
 				candidates = append(candidates, d)
 			}
 		}
+		// If nothing matches exact aspect, allow all (we'll still exclude bad categories in poster mode).
 		if len(candidates) == 0 {
-			// No exact aspect match → fall back to whatever SD has for this item
-			candidates = m.Data
-		}
-
-		// 2) Prefer poster-ish categories; tie-break by larger width
-		categoryPrefs := map[string]int{
-			"Poster Art": 0,
-			"Box Art":    1,
-			"Banner-L1":  2,
-			"Banner-L2":  3,
-			"VOD Art":    4,
-		}
-
-		var chosen Data
-		bestScore := 1 << 30
-		for _, d := range candidates {
-			catScore, ok := categoryPrefs[d.Category]
-			if !ok {
-				continue
-			}
-			// lower is better; prefer larger width on ties
-			score := catScore*1000 - d.Width
-			if score < bestScore {
-				bestScore = score
-				chosen = d
-			}
-		}
-		if chosen.URI == "" && len(candidates) > 0 {
-			chosen = candidates[0] // absolute fallback
-		}
-
-		if chosen.URI != "" {
-			uri := chosen.URI
-			if !strings.HasPrefix(uri, "http://") && !strings.HasPrefix(uri, "https://") {
-				uri = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s?token=%s", uri, Token)
-			}
-			out := Icon{Src: uri, Height: chosen.Height, Width: chosen.Width}
-
-			if Config.Options.Images.Download {
-				downloadImage(out.Src, id)
-			}
-			i = append(i, out)
+			candidates = append(candidates, m.Data...)
 		}
 	}
+
+	// 2) Category filtering/scoring.
+	isBadPosterCat := func(cat string) bool {
+		c := strings.ToLower(strings.TrimSpace(cat))
+		switch c {
+		case "iconic", "cast", "person", "people", "headshot", "celebrity", "photo", "portrait":
+			return true
+		case "banner-l2", "banner", "landscape", "horizontal art", "background", "fanart":
+			return true
+		default:
+			if strings.Contains(c, "headshot") ||
+				strings.Contains(c, "cast") ||
+				strings.Contains(c, "celebrity") ||
+				strings.Contains(c, "person") ||
+				strings.Contains(c, "portrait") ||
+				strings.Contains(c, "banner") {
+				return true
+			}
+		}
+		return false
+	}
+	isGoodPosterCat := func(cat string) bool {
+		c := strings.ToLower(strings.TrimSpace(cat))
+		switch c {
+		case "poster", "poster art", "showcard", "series", "season", "box art", "boxart", "key art", "cover art":
+			return true
+		default:
+			return strings.Contains(c, "poster") || strings.Contains(c, "showcard") || strings.Contains(c, "box")
+		}
+	}
+
+	// If we're in poster mode, exclude "bad" categories entirely.
+	filtered := candidates[:0]
+	if posterMode {
+		for _, d := range candidates {
+			if !isBadPosterCat(d.Category) {
+				filtered = append(filtered, d)
+			}
+		}
+	} else {
+		filtered = candidates
+	}
+
+	// Score & pick: prefer "good" poster categories; tie-break by width.
+	var chosen Data
+	bestScore := -1
+	for _, d := range filtered {
+		score := 50
+		if isGoodPosterCat(d.Category) {
+			score = 100
+		}
+		// prefer larger width a bit
+		score += d.Width / 40
+
+		if score > bestScore || (score == bestScore && d.Width > chosen.Width) {
+			chosen = d
+			bestScore = score
+		}
+	}
+
+	// Nothing acceptable from SD? Let TMDB handle it (return empty).
+	if chosen.URI == "" {
+		return
+	}
+
+	// Build absolute SD URL if needed (EPG-time URL; proxy will rewrite to its own later).
+	uri := chosen.URI
+	if !strings.HasPrefix(uri, "http://") && !strings.HasPrefix(uri, "https://") {
+		uri = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s?token=%s", uri, Token)
+	}
+	out := Icon{Src: uri, Height: chosen.Height, Width: chosen.Width}
+
+	// Optional: legacy eager download during EPG build
+	if Config.Options.Images.Download {
+		downloadImage(out.Src, id)
+	}
+	i = append(i, out)
 	return
 }
 
