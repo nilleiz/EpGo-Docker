@@ -126,14 +126,14 @@ func sdErrorTime(buf []byte) time.Time {
 	return time.Time{}
 }
 
-// StartServer starts a local HTTP server: static files + lazy SD image proxy.
+// StartServer starts a local HTTP server: static files + SD image proxy (pinned + legacy).
 func StartServer(dir string, port string) {
 	// Load ProgramID → imageID index
 	indexInit()
 
 	mux := http.NewServeMux()
 
-	// /proxy/sd/{programID}
+	// /proxy/sd/{programID}[/<imageID>]
 	mux.HandleFunc("/proxy/sd/", func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/sd/"), "/")
 		if len(parts) == 0 || parts[0] == "" {
@@ -141,6 +141,10 @@ func StartServer(dir string, port string) {
 			return
 		}
 		programID := strings.TrimSuffix(parts[0], ".jpg")
+		imageID := ""
+		if len(parts) >= 2 && parts[1] != "" {
+			imageID = strings.TrimSuffix(parts[1], ".jpg")
+		}
 
 		// Global pause?
 		if block, rem := shouldBlockGlobal(); block {
@@ -160,6 +164,113 @@ func StartServer(dir string, port string) {
 			return
 		}
 
+		// --- PINNED MODE: serve exact /proxy/sd/{programID}/{imageID} ---
+		if imageID != "" {
+			filePath := filepath.Join(folderImage, imageID+".jpg")
+
+			// 1) Serve from disk if present
+			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+				logger.Info("Proxy: serve pinned from cache", "programID", programID, "imageID", imageID, "path", filePath)
+				_ = indexSet(programID, imageID) // keep index fresh
+				serveFileCached(w, r, filePath)
+				return
+			}
+
+			// 2) Download pinned asset directly (no resolver)
+			token, err := getSDToken()
+			if err != nil {
+				logger.Error("Proxy: token error before pinned fetch", "programID", programID, "imageID", imageID, "error", err)
+				http.Error(w, "token error", http.StatusBadGateway)
+				return
+			}
+			imageURL := fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
+			logger.Info("Proxy: downloading pinned image", "programID", programID, "imageID", imageID, "url", imageURL)
+
+			client := &http.Client{Timeout: 20 * time.Second}
+			fetch := func(url string) (*http.Response, error) {
+				req, _ := http.NewRequest("GET", url, nil)
+				req.Header.Set("User-Agent", userAgent())
+				return client.Do(req)
+			}
+
+			resp, err := fetch(imageURL)
+			if err != nil {
+				logger.Error("Proxy: pinned fetch failed", "programID", programID, "imageID", imageID, "error", err)
+				http.Error(w, "fetch failed", http.StatusBadGateway)
+				return
+			}
+			if resp.StatusCode == http.StatusUnauthorized {
+				logger.Warn("Proxy: SD token unauthorized for pinned fetch, refreshing", "programID", programID, "imageID", imageID)
+				resp.Body.Close()
+				if token2, err2 := forceRefreshToken(); err2 == nil {
+					imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
+					resp, err = fetch(imageURL)
+					if err != nil {
+						logger.Error("Proxy: pinned fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
+						http.Error(w, "fetch retry failed", http.StatusBadGateway)
+						return
+					}
+				} else {
+					logger.Error("Proxy: token refresh failed (pinned)", "programID", programID, "imageID", imageID, "error", err2)
+					http.Error(w, "token refresh failed", http.StatusBadGateway)
+					return
+				}
+			}
+			defer resp.Body.Close()
+
+			buf, rerr := io.ReadAll(resp.Body)
+			if rerr != nil {
+				logger.Error("Proxy: read pinned body failed", "programID", programID, "imageID", imageID, "error", rerr)
+				http.Error(w, "read failed", http.StatusBadGateway)
+				return
+			}
+			if resp.StatusCode != http.StatusOK {
+				logger.Warn("Proxy: SD returned non-200 for pinned", "programID", programID, "imageID", imageID, "status", resp.Status, "body", truncate(string(buf), 256))
+				http.Error(w, resp.Status, resp.StatusCode)
+				return
+			}
+
+			// Validate payload is an image
+			ct := resp.Header.Get("Content-Type")
+			if ct == "" {
+				ct = http.DetectContentType(buf)
+			}
+			isImage := strings.HasPrefix(strings.ToLower(ct), "image/") && looksLikeImage(buf)
+			if !isImage {
+				bodyText := string(buf)
+				if strings.Contains(bodyText, "Counter resets at 00:00Z.") {
+					ref := sdErrorTime(buf)
+					if ref.IsZero() {
+						ref = time.Now().UTC()
+					}
+					until := nextUTCMidnightPlus(ref, 5)
+					setGlobalPauseUntil(until, "SD quota message: Counter resets at 00:00Z.")
+					retryAfter := time.Until(until)
+					logger.Warn("Proxy: SD quota message during pinned fetch; pausing",
+						"programID", programID, "imageID", imageID, "retry_after", retryAfter.String(), "until_utc", until, "body", truncate(bodyText, 256))
+					w.Header().Set("Retry-After", fmt.Sprintf("%.0f", retryAfter.Seconds()))
+					http.Error(w, "image downloads paused until next UTC midnight window", http.StatusTooManyRequests)
+					return
+				}
+				logger.Warn("Proxy: SD returned non-image payload for pinned; not caching",
+					"programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(bodyText, 256))
+				http.Error(w, "Schedules Direct returned a non-image payload", http.StatusBadGateway)
+				return
+			}
+
+			filePath = filepath.Join(folderImage, imageID+".jpg")
+			if err := os.WriteFile(filePath, buf, 0644); err != nil {
+				logger.Error("Proxy: save failed (pinned write)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
+				http.Error(w, "save failed", http.StatusInternalServerError)
+				return
+			}
+			_ = indexSet(programID, imageID)
+			logger.Info("Proxy: serve freshly cached (pinned)", "programID", programID, "imageID", imageID, "path", filePath)
+			serveFileCached(w, r, filePath)
+			return
+		}
+
+		// --- LEGACY MODE: /proxy/sd/{programID} (resolver path, unchanged determinism) ---
 		// 1) Try ProgramID → imageID index (no metadata needed)
 		if imgID, ok := indexGet(programID); ok && imgID != "" {
 			filePath := filepath.Join(folderImage, imgID+".jpg")

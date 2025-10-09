@@ -274,6 +274,58 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 	return
 }
 
+// GetChosenSDImage returns the imageID and Data for the image that would be chosen
+// at build-time for a given ProgramID, using the same policy as GetIcon.
+// Use imageID to emit a pinned URL: /proxy/sd/<ProgramID>/<imageID>
+func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data, ok bool) {
+	m, ok := c.Metadata[programID]
+	if !ok || len(m.Data) == 0 {
+		return "", Data{}, false
+	}
+
+	// 1) Filter by configured SD aspect string ("16x9", "2x3", "4x3", ...). "all" or empty = no filter.
+	desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
+	candidates := make([]Data, 0, len(m.Data))
+	for _, d := range m.Data {
+		if desired == "" || strings.EqualFold(desired, "all") || strings.EqualFold(d.Aspect, desired) {
+			candidates = append(candidates, d)
+		}
+	}
+	if len(candidates) == 0 {
+		// No exact aspect match → fall back to whatever SD has for this item
+		candidates = m.Data
+	}
+
+	// 2) Prefer poster-ish categories; tie-break by larger width
+	categoryPrefs := map[string]int{
+		"Poster Art": 0,
+		"Box Art":    1,
+		"Banner-L1":  2,
+		"Banner-L2":  3,
+		"VOD Art":    4,
+	}
+
+	bestScore := 1 << 30
+	for _, d := range candidates {
+		if catScore, ok := categoryPrefs[d.Category]; ok {
+			score := catScore*1000 - d.Width // lower is better
+			if score < bestScore {
+				bestScore = score
+				chosen = d
+			}
+		}
+	}
+	// 3) Absolute fallback: first candidate (matches build-time behavior)
+	if chosen.URI == "" && len(candidates) > 0 {
+		chosen = candidates[0]
+	}
+	if chosen.URI == "" {
+		return "", Data{}, false
+	}
+
+	return sdImageID(chosen.URI), chosen, true
+}
+
 func (c *cache) GetIcon(id string) (i []Icon) {
 
 	if m, ok := c.Metadata[id]; ok {

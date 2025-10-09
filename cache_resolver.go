@@ -3,8 +3,11 @@ package main
 import "strings"
 
 // resolveSDImageForProgram chooses the best SD image for a program without downloading it.
-// It respects the configured Poster Aspect (Options.Images.PosterAspect) when possible,
-// then prefers poster-like categories; ties are broken by width (larger first).
+// It mirrors the build-time selection logic used by Cache.GetIcon:
+//   1) Optional aspect filter (Options.Images.PosterAspect). "all" or "" = no filter.
+//   2) Prefer poster-like categories in this order (tie-break by larger width):
+//        Poster Art > Box Art > Banner-L1 > Banner-L2 > VOD Art
+//   3) Fallback if no preferred category was found: take the FIRST candidate (matches build-time).
 func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 	m, ok := c.Metadata[programID]
 	if !ok {
@@ -16,50 +19,62 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 		return Data{}, false
 	}
 
-	// 1) Try to honor the configured aspect (e.g., "2x3", "4x3", "16x9").
+	// 1) Aspect filter
 	desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
-	if desired != "" && !strings.EqualFold(desired, "all") {
-		filtered := make([]Data, 0, len(candidates))
+	filtered := make([]Data, 0, len(candidates))
+	if desired == "" || strings.EqualFold(desired, "all") {
+		filtered = candidates
+	} else {
 		for _, d := range candidates {
 			if strings.EqualFold(d.Aspect, desired) {
 				filtered = append(filtered, d)
 			}
 		}
-		if len(filtered) > 0 {
-			candidates = filtered
+		if len(filtered) == 0 {
+			// No exact aspect match -> fall back to all
+			filtered = candidates
 		}
 	}
 
-	// 2) Prefer poster-like categories; tie-break by width (bigger preferred).
-	categoryPrefs := map[string]int{
-		"Poster Art": 0,
-		"Box Art":    1,
-		"Banner-L1":  2,
-		"Banner-L2":  3,
-		"VOD Art":    4,
+	// 2) Category preference with width tie-break
+	prefer := func(cat string) int {
+		switch strings.ToLower(cat) {
+		case "poster art":
+			return 1
+		case "box art":
+			return 2
+		case "banner-l1":
+			return 3
+		case "banner-l2":
+			return 4
+		case "vod art":
+			return 5
+		default:
+			return 999
+		}
 	}
 
 	var chosen Data
-	bestScore := 1 << 30
-	for _, d := range candidates {
-		catScore, ok := categoryPrefs[d.Category]
-		if !ok {
+	bestRank := 999
+	bestWidth := -1
+
+	for _, d := range filtered {
+		r := prefer(d.Category)
+		if r < bestRank {
+			bestRank = r
+			bestWidth = d.Width
+			chosen = d
 			continue
 		}
-		score := catScore*1000 - d.Width // lower is better
-		if score < bestScore {
-			bestScore = score
+		if r == bestRank && d.Width > bestWidth {
+			bestWidth = d.Width
 			chosen = d
 		}
 	}
 
-	// 3) Fallback: if no preferred category found, pick the widest of what's left.
-	if chosen.URI == "" {
-		for _, d := range candidates {
-			if d.Width > chosen.Width {
-				chosen = d
-			}
-		}
+	// 3) Fallback: mirror build-time behavior — FIRST candidate (not "widest")
+	if chosen.URI == "" && len(filtered) > 0 {
+		chosen = filtered[0]
 	}
 
 	if chosen.URI == "" {

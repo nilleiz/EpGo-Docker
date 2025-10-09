@@ -78,7 +78,6 @@ func CreateXMLTV(filename string) (err error) {
 		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Name})
 
 		he(enc.Encode(xmlCha))
-
 	}
 
 	// XMLTV Programs
@@ -86,7 +85,6 @@ func CreateXMLTV(filename string) (err error) {
 
 		var program = getProgram(cache)
 		he(enc.Encode(program))
-
 	}
 
 	he(enc.EncodeToken(xml.EndElement{Name: xml.Name{Local: "tv"}}))
@@ -172,32 +170,46 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			// EpisodeNum
 			pro.EpisodeNums = Cache.GetEpisodeNum(s.ProgramID)
 
-			// Icon
+			// Icon — PINNED to the SD image chosen at build time
 			var imageURL string
-			icons := Cache.GetIcon(s.ProgramID)
-			if len(icons) != 0 {
-				if Config.Options.Images.ProxyMode && Config.Server.Enable {
-					// Use proxy URL for lazy on-demand caching
+			if Config.Options.Images.ProxyMode && Config.Server.Enable {
+				// Prefer pinned proxy URL using the exact imageID the builder would choose
+				if imageID, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok && imageID != "" {
+					base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
+					if base == "" {
+						base = "http://" + Config.Server.Address + ":" + Config.Server.Port
+					}
+					imageURL = base + "/proxy/sd/" + s.ProgramID + "/" + imageID
+				} else {
+					// Fallback to legacy proxy (will re-decide using the same policy as build)
 					base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
 					if base == "" {
 						base = "http://" + Config.Server.Address + ":" + Config.Server.Port
 					}
 					imageURL = base + "/proxy/sd/" + s.ProgramID
-				} else if Config.Options.Images.Download {
-					// Legacy eager mode (pre-downloaded)
-					imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
-				} else {
-					// Raw SD URL (expiring token) – avoid when possible
-					imageURL = icons[0].Src
+				}
+			} else {
+				// Non-proxy modes: either pre-downloaded or raw SD URL as before
+				icons := Cache.GetIcon(s.ProgramID)
+				if len(icons) != 0 {
+					if Config.Options.Images.Download {
+						// Legacy eager mode (pre-downloaded)
+						imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
+					} else {
+						// Raw SD URL (expiring token) – avoid when possible
+						imageURL = icons[0].Src
+					}
 				}
 			}
 
+			// TMDb fallback (only if nothing was found above)
 			if imageURL == "" && Config.Options.Images.Tmdb.Enable {
 				imageURL, err = tmdb.SearchItem(logger, pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.Images.Tmdb.ApiKey, Config.Files.TmdbCacheFile)
 				if err != nil {
 					logger.Error("could not connect to tmdb. check your api key", "error", err)
 				}
 			}
+
 			pro.Icon = []Icon{
 				{
 					Src: imageURL,
