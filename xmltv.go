@@ -1,253 +1,540 @@
 package main
 
 import (
-	"bytes"
-	"encoding/xml"
-	"epgo/tmdb"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
-// CreateXMLTV : Create XMLTV file from cache file
-func CreateXMLTV(filename string) (err error) {
+// ensureProgramMetadata fetches SD metadata for a single ProgramID and stores it in Cache.
+// Returns true if metadata is present afterwards.
+func ensureProgramMetadata(programID string) bool {
+	if _, ok := Cache.Metadata[programID]; ok {
+		return true
+	}
 
-	defer func() {
-		runtime.GC()
-	}()
+	logger.Info("Proxy: metadata missing, fetching", "programID", programID)
 
-	Config.File = strings.TrimSuffix(filename, filepath.Ext(filename))
+	var sd SD
+	if err := sd.Init(); err != nil {
+		logger.Error("Proxy: SD init failed", "programID", programID, "error", err)
+		return false
+	}
+	tok, err := getSDToken()
+	if err != nil {
+		logger.Error("Proxy: token fetch failed (metadata)", "programID", programID, "error", err)
+		return false
+	}
+	sd.Token = tok
 
-	var generator xml.Attr
-	generator.Name = xml.Name{Local: "EPGo"}
-	generator.Value = Version
+	sd.Req.URL = fmt.Sprintf("%smetadata/programs/", sd.BaseURL)
+	sd.Req.Type = "POST"
+	sd.Req.Call = "metadata"
+	sd.Req.Compression = false
 
-	var source xml.Attr
-	source.Name = xml.Name{Local: "source-info-name"}
-	source.Value = "Schedules Direct"
+	body, err := json.Marshal([]string{programID})
+	if err != nil {
+		logger.Error("Proxy: marshal metadata request failed", "programID", programID, "error", err)
+		return false
+	}
+	sd.Req.Data = body
 
-	var info xml.Attr
-	info.Name = xml.Name{Local: "source-info-url"}
-	info.Value = "http://schedulesdirect.org"
+	if err := sd.Connect(); err != nil {
+		logger.Warn("Proxy: SD metadata connect failed, will try refresh", "programID", programID, "error", err)
+		if tok2, err2 := forceRefreshToken(); err2 == nil {
+			sd.Token = tok2
+			if err3 := sd.Connect(); err3 != nil {
+				logger.Error("Proxy: SD metadata connect failed after refresh", "programID", programID, "error", err3)
+				return false
+			}
+		} else {
+			logger.Error("Proxy: token refresh failed (metadata)", "programID", programID, "error", err2)
+			return false
+		}
+	}
 
-	buf := &bytes.Buffer{}
-	buf.WriteString(xml.Header)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	Cache.AddMetadata(&sd.Resp.Body, &wg)
+	wg.Wait()
 
-	enc := xml.NewEncoder(buf)
-	enc.Indent("", "  ")
+	if err := Cache.Save(); err != nil {
+		logger.Warn("Proxy: cache save after metadata fetch failed", "programID", programID, "error", err)
+	}
 
-	he := func(err error) {
-		if err != nil {
-			logger.Error("unable to encode the XML", "error", err)
+	if _, ok := Cache.Metadata[programID]; ok {
+		logger.Info("Proxy: metadata stored", "programID", programID)
+		return true
+	}
+
+	logger.Warn("Proxy: metadata fetch returned no entry", "programID", programID)
+	return false
+}
+
+// normalizeFetchURL builds the final SD image URL and returns the imageID we store under.
+func normalizeFetchURL(chosenURI, freshToken string) (imageID string, imageURL string) {
+	const base = "https://json.schedulesdirect.org/20141201/image/"
+
+	if strings.HasPrefix(chosenURI, "http://") || strings.HasPrefix(chosenURI, "https://") {
+		u, err := url.Parse(chosenURI)
+		if err == nil {
+			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+			if len(parts) > 0 {
+				last := parts[len(parts)-1]
+				id := strings.TrimSuffix(last, ".jpg")
+				imageID = id
+			}
+			q := u.Query()
+			q.Set("token", freshToken)
+			u.RawQuery = q.Encode()
+			return imageID, u.String()
+		}
+	}
+
+	id := strings.TrimSuffix(chosenURI, ".jpg")
+	imageID = id
+	imageURL = fmt.Sprintf("%s%s.jpg?token=%s", base, id, freshToken)
+	return imageID, imageURL
+}
+
+// sdErrorTime extracts a reference time from an SD JSON error body.
+// Understands "serverTime" (unix seconds) or "datetime" (RFC3339). Returns UTC (or zero on failure).
+func sdErrorTime(buf []byte) time.Time {
+	type sdErr struct {
+		DateTime   string `json:"datetime"`
+		ServerTime int64  `json:"serverTime"`
+	}
+	var e sdErr
+	if err := json.Unmarshal(buf, &e); err != nil {
+		return time.Time{}
+	}
+	if e.ServerTime > 0 {
+		return time.Unix(e.ServerTime, 0).UTC()
+	}
+	if e.DateTime != "" {
+		if t, err := time.Parse(time.RFC3339, e.DateTime); err == nil {
+			return t.UTC()
+		}
+	}
+	return time.Time{}
+}
+
+// sdImageIDFromURI extracts the SD image ID from a URI or path-like string.
+func sdImageIDFromURI(uri string) string {
+	if uri == "" {
+		return ""
+	}
+	// If it's a URL, parse the path; else treat as path/ID
+	if strings.HasPrefix(uri, "http://") || strings.HasPrefix(uri, "https://") {
+		if u, err := url.Parse(uri); err == nil {
+			last := filepath.Base(u.Path)
+			return strings.TrimSuffix(last, ".jpg")
+		}
+	}
+	// trim trailing .jpg if present
+	return strings.TrimSuffix(filepath.Base(uri), ".jpg")
+}
+
+// lookupImageMeta finds Category/Aspect/Width/Height of an image by programID+imageID.
+func lookupImageMeta(programID, imageID string) (category, aspect string, width, height int, ok bool) {
+	m, ok := Cache.Metadata[programID]
+	if !ok {
+		return "", "", 0, 0, false
+	}
+	for _, d := range m.Data {
+		if sdImageIDFromURI(d.URI) == imageID {
+			return d.Category, d.Aspect, d.Width, d.Height, true
+		}
+	}
+	return "", "", 0, 0, false
+}
+
+// StartServer starts a local HTTP server: static files + SD image proxy (pinned + legacy).
+func StartServer(dir string, port string) {
+	// Load ProgramID → imageID index
+	indexInit()
+
+	mux := http.NewServeMux()
+
+	// /proxy/sd/{programID}[/<imageID>]
+	mux.HandleFunc("/proxy/sd/", func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/sd/"), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			http.Error(w, "missing programID", http.StatusBadRequest)
 			return
 		}
-	}
+		programID := strings.TrimSuffix(parts[0], ".jpg")
+		imageID := ""
+		if len(parts) >= 2 && parts[1] != "" {
+			imageID = strings.TrimSuffix(parts[1], ".jpg")
+		}
 
-	if err = Config.Open(); err != nil {
-		return
-	}
-	if err = Cache.Open(); err != nil {
-		return
-	}
-	Cache.Init()
-	if err = Cache.Open(); err != nil {
-		logger.Error("unable to open the cache", "error", err)
-		return
-	}
+		// Global pause?
+		if block, rem := shouldBlockGlobal(); block {
+			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", rem.Seconds()))
+			http.Error(w, "image downloads paused due to upstream limits", http.StatusTooManyRequests)
+			logger.Warn("Proxy: global pause in effect; denying image download", "programID", programID, "remaining", rem)
+			return
+		}
 
-	logger.Info("Create XMLTV File", "filename", Config.Files.XMLTV)
+		// Ensure image folder exists
+		folderImage := Config.Options.Images.Path
+		if folderImage == "" {
+			folderImage = "images"
+		}
+		if err := os.MkdirAll(folderImage, 0755); err != nil {
+			http.Error(w, "failed to prepare image folder", http.StatusInternalServerError)
+			return
+		}
 
-	he(enc.EncodeToken(xml.StartElement{Name: xml.Name{Local: "tv"}, Attr: []xml.Attr{generator, source, info}}))
+		// --- PINNED MODE: serve exact /proxy/sd/{programID}/{imageID} ---
+		if imageID != "" {
+			filePath := filepath.Join(folderImage, imageID+".jpg")
 
-	// XMLTV Channels
-	for _, cache := range Cache.Channel {
-		var xmlCha channel // struct_config.go
-		xmlCha.ID = fmt.Sprintf("%s.schedulesdirect.org", cache.StationID)
-		xmlCha.Icon = cache.getLogo()
-		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Callsign})
-		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Name})
-		he(enc.Encode(xmlCha))
-	}
-
-	// XMLTV Programs
-	for _, cache := range Cache.Channel {
-		progs := getProgram(cache)
-		he(enc.Encode(progs))
-	}
-
-	he(enc.EncodeToken(xml.EndElement{Name: xml.Name{Local: "tv"}}))
-	he(enc.Flush())
-
-	// write the whole body at once
-	if err = os.WriteFile(Config.Files.XMLTV, buf.Bytes(), 0644); err != nil {
-		panic(err)
-	}
-	return
-}
-
-// Channel infos
-func (channel *EPGoCache) getLogo() (icon Icon) {
-	icon.Src = channel.Logo.URL
-	icon.Height = channel.Logo.Height
-	icon.Width = channel.Logo.Width
-	return
-}
-
-func getProgram(channel EPGoCache) (p []Programme) {
-	if schedule, ok := Cache.Schedule[channel.StationID]; !ok {
-		return
-	} else {
-		for _, s := range schedule {
-
-			var pro Programme
-
-			countryCode := Config.GetLineupCountry(channel.StationID)
-
-			// Channel ID
-			pro.Channel = fmt.Sprintf("%s.schedulesdirect.org", channel.StationID)
-
-			// Start and Stop time
-			timeLayout := "2006-01-02 15:04:05 +0000 UTC"
-			t, err := time.Parse(timeLayout, s.AirDateTime.Format(timeLayout))
-			if err != nil {
-				logger.Error("unable to parse the time", "error", err)
+			// 1) Serve from disk if present
+			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+					logger.Info("Proxy: serve pinned from cache",
+						"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+				} else {
+					logger.Info("Proxy: serve pinned from cache (no meta)",
+						"programID", programID, "imageID", imageID, "path", filePath)
+				}
+				_ = indexSet(programID, imageID) // keep index fresh
+				serveFileCached(w, r, filePath)
 				return
 			}
-			dateArray := strings.Fields(t.String())
-			offset := " " + dateArray[2]
-			startTime := t.Format("20060102150405") + offset
-			stopTime := t.Add(time.Second*time.Duration(s.Duration)).Format("20060102150405") + offset
-			pro.Start = startTime
-			pro.Stop = stopTime
 
-			// Title
-			lang := "en"
-			if len(channel.BroadcastLanguage) != 0 {
-				lang = channel.BroadcastLanguage[0]
+			// 2) Download pinned asset directly (no resolver)
+			token, err := getSDToken()
+			if err != nil {
+				logger.Error("Proxy: token error before pinned fetch", "programID", programID, "imageID", imageID, "error", err)
+				http.Error(w, "token error", http.StatusBadGateway)
+				return
 			}
-			pro.Title = Cache.GetTitle(s.ProgramID, lang)
+			imageURL := fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
+			logger.Info("Proxy: downloading pinned image", "programID", programID, "imageID", imageID, "url", imageURL)
 
-			// New and Live guide mini-icons
-			if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
-				pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
-			}
-			if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
-				pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
+			client := &http.Client{Timeout: 20 * time.Second}
+			fetch := func(url string) (*http.Response, error) {
+				req, _ := http.NewRequest("GET", url, nil)
+				req.Header.Set("User-Agent", userAgent())
+				return client.Do(req)
 			}
 
-			// Sub Title
-			pro.SubTitle = Cache.GetSubTitle(s.ProgramID, pro.SubTitle.Value)
-
-			// Description
-			pro.Desc = Cache.GetDescs(s.ProgramID, pro.SubTitle.Value)
-
-			// Credits
-			pro.Credits = Cache.GetCredits(s.ProgramID)
-
-			// Category
-			pro.Categorys = Cache.GetCategory(s.ProgramID)
-
-			// Language
-			pro.Language = lang
-
-			// EpisodeNum
-			pro.EpisodeNums = Cache.GetEpisodeNum(s.ProgramID)
-
-			// =========================
-			// Icon selection (PINNED SD → TMDb fallback → blank)
-			// =========================
-			imageURL := ""
-
-			if Config.Options.Images.ProxyMode && Config.Server.Enable {
-				// Try SD pin
-				if imageID, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok && imageID != "" {
-					base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
-					if base == "" {
-						base = "http://" + Config.Server.Address + ":" + Config.Server.Port
+			resp, err := fetch(imageURL)
+			if err != nil {
+				logger.Error("Proxy: pinned fetch failed", "programID", programID, "imageID", imageID, "error", err)
+				http.Error(w, "fetch failed", http.StatusBadGateway)
+				return
+			}
+			if resp.StatusCode == http.StatusUnauthorized {
+				logger.Warn("Proxy: SD token unauthorized for pinned fetch, refreshing", "programID", programID, "imageID", imageID)
+				resp.Body.Close()
+				if token2, err2 := forceRefreshToken(); err2 == nil {
+					imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
+					resp, err = fetch(imageURL)
+					if err != nil {
+						logger.Error("Proxy: pinned fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
+						http.Error(w, "fetch retry failed", http.StatusBadGateway)
+						return
 					}
-					imageURL = base + "/proxy/sd/" + s.ProgramID + "/" + imageID
 				} else {
-					// No SD image -> DO NOT force legacy proxy; allow TMDb fallback below
+					logger.Error("Proxy: token refresh failed (pinned)", "programID", programID, "imageID", imageID, "error", err2)
+					http.Error(w, "token refresh failed", http.StatusBadGateway)
+					return
 				}
-			} else {
-				// Non-proxy mode: direct SD or pre-downloaded
-				icons := Cache.GetIcon(s.ProgramID)
-				if len(icons) != 0 {
-					if Config.Options.Images.Download {
-						// Eager download mode
-						imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
-					} else {
-						// Raw SD URL (expiring token)
-						imageURL = icons[0].Src
+			}
+			defer resp.Body.Close()
+
+			buf, rerr := io.ReadAll(resp.Body)
+			if rerr != nil {
+				logger.Error("Proxy: read pinned body failed", "programID", programID, "imageID", imageID, "error", rerr)
+				http.Error(w, "read failed", http.StatusBadGateway)
+				return
+			}
+			if resp.StatusCode != http.StatusOK {
+				logger.Warn("Proxy: SD returned non-200 for pinned", "programID", programID, "imageID", imageID, "status", resp.Status, "body", truncate(string(buf), 256))
+				http.Error(w, resp.Status, resp.StatusCode)
+				return
+			}
+
+			// Validate payload is an image
+			ct := resp.Header.Get("Content-Type")
+			if ct == "" {
+				ct = http.DetectContentType(buf)
+			}
+			isImage := strings.HasPrefix(strings.ToLower(ct), "image/") && looksLikeImage(buf)
+			if !isImage {
+				bodyText := string(buf)
+				if strings.Contains(bodyText, "Counter resets at 00:00Z.") {
+					ref := sdErrorTime(buf)
+					if ref.IsZero() {
+						ref = time.Now().UTC()
 					}
+					until := nextUTCMidnightPlus(ref, 5)
+					setGlobalPauseUntil(until, "SD quota message: Counter resets at 00:00Z.")
+					retryAfter := time.Until(until)
+					logger.Warn("Proxy: SD quota message during pinned fetch; pausing",
+						"programID", programID, "imageID", imageID, "retry_after", retryAfter.String(), "until_utc", until, "body", truncate(bodyText, 256))
+					w.Header().Set("Retry-After", fmt.Sprintf("%.0f", retryAfter.Seconds()))
+					http.Error(w, "image downloads paused until next UTC midnight window", http.StatusTooManyRequests)
+					return
 				}
+				logger.Warn("Proxy: SD returned non-image payload for pinned; not caching",
+					"programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(bodyText, 256))
+				http.Error(w, "Schedules Direct returned a non-image payload", http.StatusBadGateway)
+				return
 			}
 
-			// TMDb fallback (only if nothing from SD)
-			if imageURL == "" && Config.Options.Images.Tmdb.Enable {
-				imageURL, err = tmdb.SearchItem(
-					logger,
-					pro.Title[0].Value,
-					func() string {
-						if len(pro.EpisodeNums) > 0 && len(pro.EpisodeNums[0].Value) >= 2 {
-							return pro.EpisodeNums[0].Value[0:2]
-						}
-						return ""
-					}(),
-					Config.Options.Images.Tmdb.ApiKey,
-					Config.Files.TmdbCacheFile,
-				)
-				if err != nil {
-					logger.Error("could not connect to tmdb. check your api key", "error", err)
-				}
+			filePath = filepath.Join(folderImage, imageID+".jpg")
+			if err := os.WriteFile(filePath, buf, 0644); err != nil {
+				logger.Error("Proxy: save failed (pinned write)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
+				http.Error(w, "save failed", http.StatusInternalServerError)
+				return
 			}
-
-			pro.Icon = []Icon{{Src: imageURL}}
-
-			// Rating
-			pro.Rating = Cache.GetRating(s.ProgramID, countryCode)
-
-			// Video
-			for _, v := range s.VideoProperties {
-				switch strings.ToLower(v) {
-				case "hdtv", "sdtv", "uhdtv", "3d":
-					pro.Video.Quality = strings.ToUpper(v)
-				}
-			}
-
-			// Audio
-			for _, a := range s.AudioProperties {
-				switch a {
-				case "stereo", "dvs":
-					pro.Audio.Stereo = "stereo"
-				case "DD 5.1", "Atmos":
-					pro.Audio.Stereo = "dolby digital"
-				case "Dolby":
-					pro.Audio.Stereo = "dolby"
-				case "dubbed", "mono":
-					pro.Audio.Stereo = "mono"
-				default:
-					pro.Audio.Stereo = "mono"
-				}
-			}
-
-			// New / PreviouslyShown
-			if s.New {
-				pro.New = &New{Value: ""}
+			_ = indexSet(programID, imageID)
+			if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+				logger.Info("Proxy: serve freshly cached (pinned)",
+					"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
 			} else {
-				pro.PreviouslyShown = Cache.GetPreviouslyShown(s.ProgramID)
+				logger.Info("Proxy: serve freshly cached (pinned, no meta)",
+					"programID", programID, "imageID", imageID, "path", filePath)
 			}
-
-			// Live
-			if s.LiveTapeDelay == "Live" {
-				pro.Live = &Live{Value: ""}
-			}
-
-			p = append(p, pro)
+			serveFileCached(w, r, filePath)
+			return
 		}
+
+		// --- LEGACY MODE: /proxy/sd/{programID} (resolver path, unchanged determinism) ---
+		// 1) Try ProgramID → imageID index (no metadata needed)
+		if imgID, ok := indexGet(programID); ok && imgID != "" {
+			filePath := filepath.Join(folderImage, imgID+".jpg")
+			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
+					logger.Info("Proxy: serve from cache (index hit)",
+						"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+				} else {
+					logger.Info("Proxy: serve from cache (index hit, no meta)",
+						"programID", programID, "imageID", imgID, "path", filePath)
+				}
+				serveFileCached(w, r, filePath)
+				return
+			}
+			logger.Warn("Proxy: index stale, removing mapping", "programID", programID, "imageID", imgID)
+			_ = indexDelete(programID)
+		}
+
+		// 2) Resolve via metadata (or fetch-on-miss)
+		chosen, ok := Cache.resolveSDImageForProgram(programID)
+		if !ok || chosen.URI == "" {
+			if ensureProgramMetadata(programID) {
+				if ch2, ok2 := Cache.resolveSDImageForProgram(programID); ok2 && ch2.URI != "" {
+					chosen = ch2
+					ok = true
+				}
+			}
+		}
+		if !ok || chosen.URI == "" {
+			logger.Warn("Proxy: no suitable image in metadata", "programID", programID)
+			http.NotFound(w, r)
+			return
+		}
+
+		// Category/Aspect/Size logging for resolved choice
+		logger.Info("Proxy: resolved image candidate",
+			"programID", programID,
+			"imageID", sdImageIDFromURI(chosen.URI),
+			"category", chosen.Category, "aspect", chosen.Aspect, "w", chosen.Width, "h", chosen.Height,
+			"uri", chosen.URI)
+
+		// Token
+		token, err := getSDToken()
+		if err != nil {
+			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
+			http.Error(w, "token error", http.StatusBadGateway)
+			return
+		}
+
+		imageID, imageURL := normalizeFetchURL(chosen.URI, token)
+		filePath := filepath.Join(folderImage, imageID+".jpg")
+
+		// 3) Serve from disk if present (and update index)
+		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+			if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+				logger.Info("Proxy: serve from cache (by imageID)",
+					"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+			} else {
+				logger.Info("Proxy: serve from cache (by imageID, no meta)",
+					"programID", programID, "imageID", imageID, "path", filePath)
+			}
+			_ = indexSet(programID, imageID)
+			serveFileCached(w, r, filePath)
+			return
+		}
+
+		// 4) Download (retry once on 401)
+		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
+
+		client := &http.Client{Timeout: 20 * time.Second}
+		fetch := func(url string) (*http.Response, error) {
+			req, _ := http.NewRequest("GET", url, nil)
+			req.Header.Set("User-Agent", userAgent())
+			return client.Do(req)
+		}
+
+		resp, err := fetch(imageURL)
+		if err != nil {
+			logger.Error("Proxy: fetch failed", "programID", programID, "imageID", imageID, "error", err)
+			http.Error(w, "fetch failed", http.StatusBadGateway)
+			return
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
+			resp.Body.Close()
+			if token2, err2 := forceRefreshToken(); err2 == nil {
+				_, imageURL = normalizeFetchURL(chosen.URI, token2)
+				resp, err = fetch(imageURL)
+				if err != nil {
+					logger.Error("Proxy: fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
+					http.Error(w, "fetch retry failed", http.StatusBadGateway)
+					return
+				}
+			} else {
+				logger.Error("Proxy: token refresh failed", "programID", programID, "error", err2)
+				http.Error(w, "token refresh failed", http.StatusBadGateway)
+				return
+			}
+		}
+		defer resp.Body.Close()
+
+		// Read entire body for validation
+		buf, rerr := io.ReadAll(resp.Body)
+		if rerr != nil {
+			logger.Error("Proxy: read body failed", "programID", programID, "imageID", imageID, "error", rerr)
+			http.Error(w, "read failed", http.StatusBadGateway)
+			return
+		}
+
+		// Non-200 -> do not save
+		if resp.StatusCode != http.StatusOK {
+			logger.Warn("Proxy: SD returned non-200", "programID", programID, "imageID", imageID, "status", resp.Status, "body", truncate(string(buf), 256))
+			http.Error(w, resp.Status, resp.StatusCode)
+			return
+		}
+
+		// Validate payload is an image; SD can return JSON with 200 OK.
+		ct := resp.Header.Get("Content-Type")
+		if ct == "" {
+			ct = http.DetectContentType(buf)
+		}
+		isImage := strings.HasPrefix(strings.ToLower(ct), "image/") && looksLikeImage(buf)
+		if !isImage {
+			// If body contains quota message, pause globally until next UTC midnight + 5 minutes.
+			bodyText := string(buf)
+			if strings.Contains(bodyText, "Counter resets at 00:00Z.") {
+				ref := sdErrorTime(buf)
+				if ref.IsZero() {
+					ref = time.Now().UTC()
+				}
+				until := nextUTCMidnightPlus(ref, 5)
+				setGlobalPauseUntil(until, "SD quota message: Counter resets at 00:00Z.")
+				retryAfter := time.Until(until)
+
+				logger.Warn("Proxy: SD returned quota message; pausing all image downloads",
+					"programID", programID, "imageID", imageID,
+					"retry_after", retryAfter.String(), "until_utc", until, "body", truncate(bodyText, 256))
+
+				w.Header().Set("Retry-After", fmt.Sprintf("%.0f", retryAfter.Seconds()))
+				http.Error(w, "image downloads paused until next UTC midnight window", http.StatusTooManyRequests)
+				return
+			}
+
+			// Generic non-image payload — do not save; return 502
+			logger.Warn("Proxy: SD returned non-image payload; not caching",
+				"programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(bodyText, 256))
+			http.Error(w, "Schedules Direct returned a non-image payload", http.StatusBadGateway)
+			return
+		}
+
+		// Save to disk
+		if err := os.WriteFile(filePath, buf, 0644); err != nil {
+			logger.Error("Proxy: save failed (write)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
+			http.Error(w, "save failed", http.StatusInternalServerError)
+			return
+		}
+		logger.Info("Proxy: saved image", "programID", programID, "imageID", imageID, "path", filePath)
+
+		// Update index and serve (log with category if we can look it up)
+		_ = indexSet(programID, imageID)
+		if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+			logger.Info("Proxy: serve freshly cached",
+				"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+		} else {
+			logger.Info("Proxy: serve freshly cached (no meta)",
+				"programID", programID, "imageID", imageID, "path", filePath)
+		}
+		serveFileCached(w, r, filePath)
+	})
+
+	// Static server
+	fs := http.FileServer(http.Dir(dir))
+	mux.Handle("/", fs)
+
+	logger.Info("Starting server", "address", "http://"+Config.Server.Address+":"+port, "serving", filepath.Clean(dir))
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		logger.Error("Server failed to start", "error", err)
 	}
-	return
+}
+
+// Serve a local file with strong cache headers
+func serveFileCached(w http.ResponseWriter, r *http.Request, path string) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Last-Modified", fi.ModTime().UTC().Format(http.TimeFormat))
+	http.ServeFile(w, r, path)
+}
+
+// looksLikeImage does a minimal magic check so we don't save JSON/HTML as .jpg
+func looksLikeImage(b []byte) bool {
+	if len(b) < 12 {
+		return false
+	}
+	// JPEG: FF D8 FF
+	if b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF {
+		return true
+	}
+	// PNG: 89 50 4E 47 0D 0A 1A 0A
+	png := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+	if len(b) >= 8 && string(b[:8]) == string(png) {
+		return true
+	}
+	// WebP: "RIFF"...."WEBP"
+	if len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP" {
+		return true
+	}
+	// Fallback: sniff
+	typ := http.DetectContentType(b)
+	return strings.HasPrefix(strings.ToLower(typ), "image/")
+}
+
+// truncate utility for logging
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	if n <= 3 {
+		return s[:n]
+	}
+	return s[:n-3] + "..."
 }
