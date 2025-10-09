@@ -37,7 +37,8 @@ func ensureProgramMetadata(programID string) bool {
 	sd.Req.URL = fmt.Sprintf("%smetadata/programs/", sd.BaseURL)
 	sd.Req.Type = "POST"
 	sd.Req.Call = "metadata"
-	sd.Req.Compression = false
+	// IMPORTANT: AddMetadata expects gzipped body → request compressed response
+	sd.Req.Compression = true
 
 	body, err := json.Marshal([]string{programID})
 	if err != nil {
