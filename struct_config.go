@@ -16,9 +16,9 @@ type config struct {
 	} `yaml:"Files"`
 
 	Server struct {
-		Enable  bool   `yaml:"Enable"`
-		Address string `yaml:"Address"`
-		Port    string `yaml:"Port"`
+		Enable              bool   `yaml:"Enable"`
+		Address             string `yaml:"Address"`
+		Port                string `yaml:"Port"`
 	} `yaml:"Server"`
 
 	Options struct {
@@ -27,14 +27,21 @@ type config struct {
 		SubtitleIntoDescription bool `yaml:"Subtitle into Description"`
 		Credits                 bool `yaml:"Insert credits tag into XML file"`
 		Images                  struct {
-			Download bool   `yaml:"Download Images from Schedules Direct"`
-			Path     string `yaml:"Image Path"`
+			Download     bool   `yaml:"Download Images from Schedules Direct"`
+			Path         string `yaml:"Image Path"`
 			PosterAspect string `yaml:"Poster Aspect"` // all | 2x3 | 4x3 | 16x9
-			Tmdb     struct {
+
+			// Lazy on-demand proxy mode. When enabled, XMLTV uses proxied URLs and
+			// images are fetched + cached only on first client request.
+			ProxyMode    bool   `yaml:"Proxy Mode"`
+			ProxyBaseURL string `yaml:"Proxy Base URL"`
+
+			Tmdb struct {
 				Enable bool   `yaml:"Enable"`
 				ApiKey string `yaml:"Api Key"`
 			} `yaml:"The MovieDB"`
 		} `yaml:"Images"`
+
 		Rating struct {
 			Guidelines          bool     `yaml:"Insert rating tag into XML file"`
 			MaxEntries          int      `yaml:"Maximum rating entries. 0 for all entries"`

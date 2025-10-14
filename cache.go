@@ -15,6 +15,47 @@ import (
 var Cache cache
 var ImageError bool = false
 
+// ---- selection helpers (strict categories + aspect preference) ----
+
+func allowedCategoryRank(cat string) (int, bool) {
+	switch strings.ToLower(cat) {
+	case "poster art":
+		return 0, true
+	case "box art":
+		return 1, true
+	case "banner-l1":
+		return 2, true
+	case "banner-l2":
+		return 3, true
+	case "vod art":
+		return 4, true
+	default:
+		return 999, false
+	}
+}
+
+func aspectRank(aspect string) int {
+	// Used only when no explicit Poster Aspect is configured.
+	switch strings.ToLower(aspect) {
+	case "16x9":
+		return 0
+	case "2x3":
+		return 1
+	case "4x3":
+		return 2
+	case "3x4":
+		return 3
+	case "2x1":
+		return 4
+	case "1x1":
+		return 5
+	default:
+		return 99
+	}
+}
+
+// ------------------------------------------------------------------
+
 // Init : Inti cache
 func (c *cache) Init() {
 
@@ -274,47 +315,111 @@ func (c *cache) GetRequiredMetaIDs() (metaIDs []string) {
 	return
 }
 
-func (c *cache) GetIcon(id string) (i []Icon) {
+// GetChosenSDImage returns imageID + Data for the image chosen with strict category logic
+// and your aspect preference. If none qualifies, returns ok=false (so TMDb can take over).
+func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data, ok bool) {
+	m, ok := c.Metadata[programID]
+	if !ok || len(m.Data) == 0 {
+		return "", Data{}, false
+	}
 
-	if m, ok := c.Metadata[id]; ok {
-		// 1) Filter by configured SD aspect string ("16x9", "2x3", "4x3", ...). "all" or empty = no filter.
-		desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
-		candidates := make([]Data, 0, len(m.Data))
-		for _, d := range m.Data {
-			if desired == "" || strings.EqualFold(desired, "all") || strings.EqualFold(d.Aspect, desired) {
-				candidates = append(candidates, d)
+	desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
+
+	// 1) Filter to allowed categories only
+	filtered := make([]Data, 0, len(m.Data))
+	for _, d := range m.Data {
+		if _, allowed := allowedCategoryRank(d.Category); allowed {
+			filtered = append(filtered, d)
+		}
+	}
+	if len(filtered) == 0 {
+		return "", Data{}, false
+	}
+
+	// 2) Aspect requirement if desired is set and not "all"
+	if desired != "" && !strings.EqualFold(desired, "all") {
+		tmp := make([]Data, 0, len(filtered))
+		for _, d := range filtered {
+			if strings.EqualFold(d.Aspect, desired) {
+				tmp = append(tmp, d)
 			}
 		}
-		if len(candidates) == 0 {
-			// No exact aspect match → fall back to whatever SD has for this item
-			candidates = m.Data
+		if len(tmp) == 0 {
+			// strict: no SD image if desired aspect not present
+			return "", Data{}, false
+		}
+		filtered = tmp
+	}
+
+	// 3) Score: categoryRank*10 + aspectRank (aspectRank only used if desired is empty/all)
+	bestScore := 1 << 30
+	bestWidth := -1
+	for _, d := range filtered {
+		catRank, _ := allowedCategoryRank(d.Category)
+		aRank := 0
+		if desired == "" || strings.EqualFold(desired, "all") {
+			aRank = aspectRank(d.Aspect)
+		}
+		score := catRank*10 + aRank
+		if score < bestScore || (score == bestScore && d.Width > bestWidth) {
+			bestScore = score
+			bestWidth = d.Width
+			chosen = d
+		}
+	}
+
+	if chosen.URI == "" {
+		return "", Data{}, false
+	}
+	return sdImageIDFromURI(chosen.URI), chosen, true
+}
+
+// Legacy API used when not in proxy pin mode (kept compatible)
+func (c *cache) GetIcon(id string) (i []Icon) {
+	if m, ok := c.Metadata[id]; ok {
+		desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
+
+		// allowed categories only
+		filtered := make([]Data, 0, len(m.Data))
+		for _, d := range m.Data {
+			if _, allowed := allowedCategoryRank(d.Category); allowed {
+				filtered = append(filtered, d)
+			}
+		}
+		if len(filtered) == 0 {
+			return
 		}
 
-		// 2) Prefer poster-ish categories; tie-break by larger width
-		categoryPrefs := map[string]int{
-			"Poster Art": 0,
-			"Box Art":    1,
-			"Banner-L1":  2,
-			"Banner-L2":  3,
-			"VOD Art":    4,
+		// desired aspect enforcement
+		if desired != "" && !strings.EqualFold(desired, "all") {
+			tmp := make([]Data, 0, len(filtered))
+			for _, d := range filtered {
+				if strings.EqualFold(d.Aspect, desired) {
+					tmp = append(tmp, d)
+				}
+			}
+			if len(tmp) == 0 {
+				return
+			}
+			filtered = tmp
 		}
 
+		// category+aspect scoring
 		var chosen Data
 		bestScore := 1 << 30
-		for _, d := range candidates {
-			catScore, ok := categoryPrefs[d.Category]
-			if !ok {
-				continue
+		bestWidth := -1
+		for _, d := range filtered {
+			catRank, _ := allowedCategoryRank(d.Category)
+			aRank := 0
+			if desired == "" || strings.EqualFold(desired, "all") {
+				aRank = aspectRank(d.Aspect)
 			}
-			// lower is better; prefer larger width on ties
-			score := catScore*1000 - d.Width
-			if score < bestScore {
+			score := catRank*10 + aRank
+			if score < bestScore || (score == bestScore && d.Width > bestWidth) {
 				bestScore = score
+				bestWidth = d.Width
 				chosen = d
 			}
-		}
-		if chosen.URI == "" && len(candidates) > 0 {
-			chosen = candidates[0] // absolute fallback
 		}
 
 		if chosen.URI != "" {

@@ -14,10 +14,7 @@ import (
 
 // CreateXMLTV : Create XMLTV file from cache file
 func CreateXMLTV(filename string) (err error) {
-
-	defer func() {
-		runtime.GC()
-	}()
+	defer func() { runtime.GC() }()
 
 	Config.File = strings.TrimSuffix(filename, filepath.Ext(filename))
 
@@ -39,213 +36,214 @@ func CreateXMLTV(filename string) (err error) {
 	enc := xml.NewEncoder(buf)
 	enc.Indent("", "  ")
 
-	var he = func(err error) {
+	he := func(err error) {
 		if err != nil {
 			logger.Error("unable to encode the XML", "error", err)
-			return
 		}
 	}
 
-	err = Config.Open()
-	if err != nil {
+	if err = Config.Open(); err != nil {
 		return
 	}
-
-	err = Cache.Open()
-	if err != nil {
+	if err = Cache.Open(); err != nil {
 		return
 	}
-
 	Cache.Init()
-	err = Cache.Open()
-	if err != nil {
+	if err = Cache.Open(); err != nil {
 		logger.Error("unable to open the cache", "error", err)
 		return
 	}
 
 	logger.Info("Create XMLTV File", "filename", Config.Files.XMLTV)
 
-	he(enc.EncodeToken(xml.StartElement{Name: xml.Name{Local: "tv"}, Attr: []xml.Attr{generator, source, info}}))
+	he(enc.EncodeToken(xml.StartElement{
+		Name: xml.Name{Local: "tv"},
+		Attr: []xml.Attr{generator, source, info},
+	}))
 
-	// XMLTV Channels
+	// Channels
 	for _, cache := range Cache.Channel {
-
-		var xmlCha channel // struct_config.go
-
+		var xmlCha channel // defined in struct_config.go
 		xmlCha.ID = fmt.Sprintf("%s.schedulesdirect.org", cache.StationID)
 		xmlCha.Icon = cache.getLogo()
 		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Callsign})
 		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Name})
-
 		he(enc.Encode(xmlCha))
-
 	}
 
-	// XMLTV Programs
+	// Programmes
 	for _, cache := range Cache.Channel {
-
-		var program = getProgram(cache)
-		he(enc.Encode(program))
-
+		progs := getProgram(cache)
+		he(enc.Encode(progs))
 	}
 
 	he(enc.EncodeToken(xml.EndElement{Name: xml.Name{Local: "tv"}}))
 	he(enc.Flush())
 
-	// write the whole body at once
-	err = os.WriteFile(Config.Files.XMLTV, buf.Bytes(), 0644)
-	if err != nil {
-		panic(err)
+	// Write file
+	if err = os.WriteFile(Config.Files.XMLTV, buf.Bytes(), 0644); err != nil {
+		return
 	}
-
 	return
 }
 
 // Channel infos
 func (channel *EPGoCache) getLogo() (icon Icon) {
-
 	icon.Src = channel.Logo.URL
 	icon.Height = channel.Logo.Height
 	icon.Width = channel.Logo.Width
-
 	return
 }
 
 func getProgram(channel EPGoCache) (p []Programme) {
-	if schedule, ok := Cache.Schedule[channel.StationID]; ok {
+	schedule, ok := Cache.Schedule[channel.StationID]
+	if !ok {
+		return
+	}
 
-		for _, s := range schedule {
+	for _, s := range schedule {
+		var pro Programme
 
-			var pro Programme
+		countryCode := Config.GetLineupCountry(channel.StationID)
 
-			var countryCode = Config.GetLineupCountry(channel.StationID)
+		// Channel ID
+		pro.Channel = fmt.Sprintf("%s.schedulesdirect.org", channel.StationID)
 
-			// Channel ID
-			pro.Channel = fmt.Sprintf("%s.schedulesdirect.org", channel.StationID)
+		// Start and Stop time
+		timeLayout := "2006-01-02 15:04:05 +0000 UTC"
+		t, err := time.Parse(timeLayout, s.AirDateTime.Format(timeLayout))
+		if err != nil {
+			logger.Error("unable to parse the time", "error", err)
+			return
+		}
+		dateArray := strings.Fields(t.String())
+		offset := " " + dateArray[2]
+		pro.Start = t.Format("20060102150405") + offset
+		pro.Stop = t.Add(time.Second * time.Duration(s.Duration)).Format("20060102150405") + offset
 
-			// Start and Stop time
-			timeLayout := "2006-01-02 15:04:05 +0000 UTC"
-			t, err := time.Parse(timeLayout, s.AirDateTime.Format(timeLayout))
-			if err != nil {
-				logger.Error("unable to parse the time", "error", err)
-				return
+		// Title
+		lang := "en"
+		if len(channel.BroadcastLanguage) != 0 {
+			lang = channel.BroadcastLanguage[0]
+		}
+		pro.Title = Cache.GetTitle(s.ProgramID, lang)
+
+		// New and Live guide mini-icons
+		if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
+			pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
+		}
+		if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
+			pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
+		}
+
+		// Sub Title
+		pro.SubTitle = Cache.GetSubTitle(s.ProgramID, pro.SubTitle.Value)
+
+		// Description
+		pro.Desc = Cache.GetDescs(s.ProgramID, pro.SubTitle.Value)
+
+		// Credits
+		pro.Credits = Cache.GetCredits(s.ProgramID)
+
+		// Category
+		pro.Categorys = Cache.GetCategory(s.ProgramID)
+
+		// Language
+		pro.Language = lang
+
+		// EpisodeNum
+		pro.EpisodeNums = Cache.GetEpisodeNum(s.ProgramID)
+
+		// -------------------------
+		// Icon selection
+		// SD (pinned) → TMDb → blank
+		// -------------------------
+		imageURL := ""
+
+		if Config.Options.Images.ProxyMode && Config.Server.Enable {
+			// Try SD pin
+			if imageID, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok && imageID != "" {
+				base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
+				if base == "" {
+					base = "http://" + Config.Server.Address + ":" + Config.Server.Port
+				}
+				imageURL = base + "/proxy/sd/" + s.ProgramID + "/" + imageID
 			}
-
-			var dateArray = strings.Fields(t.String())
-			var offset = " " + dateArray[2]
-			var startTime = t.Format("20060102150405") + offset
-			var stopTime = t.Add(time.Second*time.Duration(s.Duration)).Format("20060102150405") + offset
-			pro.Start = startTime
-			pro.Stop = stopTime
-
-			// Title
-			var lang = "en"
-			if len(channel.BroadcastLanguage) != 0 {
-				lang = channel.BroadcastLanguage[0]
-			}
-
-			pro.Title = Cache.GetTitle(s.ProgramID, lang)
-
-			// New and Live guide mini-icons
-			if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
-				pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
-			}
-			if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
-				pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
-			}
-
-			// Sub Title
-			pro.SubTitle = Cache.GetSubTitle(s.ProgramID, pro.SubTitle.Value)
-
-			// Description
-			pro.Desc = Cache.GetDescs(s.ProgramID, pro.SubTitle.Value)
-
-			// Credits
-			pro.Credits = Cache.GetCredits(s.ProgramID)
-
-			// Category
-			pro.Categorys = Cache.GetCategory(s.ProgramID)
-
-			// Language
-			pro.Language = lang
-
-			// EpisodeNum
-			pro.EpisodeNums = Cache.GetEpisodeNum(s.ProgramID)
-
-			// Icon
-			var imageURL string
+			// else: leave empty to allow TMDb fallback
+		} else {
+			// Non-proxy mode: direct SD or pre-downloaded
 			icons := Cache.GetIcon(s.ProgramID)
 			if len(icons) != 0 {
 				if Config.Options.Images.Download {
+					// Eager download mode
 					imageURL = "http://" + Config.Server.Address + ":" + Config.Server.Port + "/" + s.ProgramID + ".jpg"
 				} else {
+					// Raw SD URL (expiring token)
 					imageURL = icons[0].Src
 				}
 			}
-
-			if imageURL == "" && Config.Options.Images.Tmdb.Enable {
-				imageURL, err = tmdb.SearchItem(logger, pro.Title[0].Value, pro.EpisodeNums[0].Value[0:2], Config.Options.Images.Tmdb.ApiKey, Config.Files.TmdbCacheFile)
-				if err != nil {
-					logger.Error("could not connect to tmdb. check your api key", "error", err)
-				}
-			}
-			pro.Icon = []Icon{
-				{
-					Src: imageURL,
-				},
-			}
-
-			// Rating
-			pro.Rating = Cache.GetRating(s.ProgramID, countryCode)
-
-			// Video
-			for _, v := range s.VideoProperties {
-
-				switch strings.ToLower(v) {
-
-				case "hdtv", "sdtv", "uhdtv", "3d":
-					pro.Video.Quality = strings.ToUpper(v)
-
-				}
-
-			}
-
-			// Audio
-			for _, a := range s.AudioProperties {
-
-				switch a {
-
-				case "stereo", "dvs":
-					pro.Audio.Stereo = "stereo"
-				case "DD 5.1", "Atmos":
-					pro.Audio.Stereo = "dolby digital"
-				case "Dolby":
-					pro.Audio.Stereo = "dolby"
-				case "dubbed", "mono":
-					pro.Audio.Stereo = "mono"
-				default:
-					pro.Audio.Stereo = "mono"
-
-				}
-
-			}
-
-			// New / PreviouslyShown
-			if s.New {
-				pro.New = &New{Value: ""}
-			} else {
-				pro.PreviouslyShown = Cache.GetPreviouslyShown(s.ProgramID)
-			}
-
-			// Live
-			if s.LiveTapeDelay == "Live" {
-				pro.Live = &Live{Value: ""}
-			}
-
-			p = append(p, pro)
-
 		}
 
+		// TMDb fallback (only if nothing from SD)
+		if imageURL == "" && Config.Options.Images.Tmdb.Enable {
+			seas := ""
+			if len(pro.EpisodeNums) > 0 && len(pro.EpisodeNums[0].Value) >= 2 {
+				seas = pro.EpisodeNums[0].Value[0:2]
+			}
+			imageURL, err = tmdb.SearchItem(
+				logger,
+				pro.Title[0].Value,
+				seas,
+				Config.Options.Images.Tmdb.ApiKey,
+				Config.Files.TmdbCacheFile,
+			)
+			if err != nil {
+				logger.Error("could not connect to tmdb. check your api key", "error", err)
+			}
+		}
+
+		pro.Icon = []Icon{{Src: imageURL}}
+
+		// Rating
+		pro.Rating = Cache.GetRating(s.ProgramID, countryCode)
+
+		// Video
+		for _, v := range s.VideoProperties {
+			switch strings.ToLower(v) {
+			case "hdtv", "sdtv", "uhdtv", "3d":
+				pro.Video.Quality = strings.ToUpper(v)
+			}
+		}
+
+		// Audio
+		for _, a := range s.AudioProperties {
+			switch a {
+			case "stereo", "dvs":
+				pro.Audio.Stereo = "stereo"
+			case "DD 5.1", "Atmos":
+				pro.Audio.Stereo = "dolby digital"
+			case "Dolby":
+				pro.Audio.Stereo = "dolby"
+			case "dubbed", "mono":
+				pro.Audio.Stereo = "mono"
+			default:
+				pro.Audio.Stereo = "mono"
+			}
+		}
+
+		// New / PreviouslyShown
+		if s.New {
+			pro.New = &New{Value: ""}
+		} else {
+			pro.PreviouslyShown = Cache.GetPreviouslyShown(s.ProgramID)
+		}
+
+		// Live
+		if s.LiveTapeDelay == "Live" {
+			pro.Live = &Live{Value: ""}
+		}
+
+		p = append(p, pro)
 	}
 
 	return

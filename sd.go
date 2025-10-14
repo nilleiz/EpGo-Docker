@@ -16,7 +16,7 @@ func (sd *SD) Init() (err error) {
 
 	sd.BaseURL = "https://json.schedulesdirect.org/20141201/"
 
-	// Funtion to get token
+	// Function to get token
 	sd.Login = func() (err error) {
 
 		sd.Req.URL = sd.BaseURL + "token"
@@ -158,7 +158,6 @@ func (sd *SD) Init() (err error) {
 }
 
 // Connect : Connect to Schedules Direct
-
 func (sd *SD) Connect() (err error) {
 
 	var sdStatus SDStatus
@@ -173,9 +172,10 @@ func (sd *SD) Connect() (err error) {
 		req.Header.Set("Accept-Encoding", "deflate,gzip")
 	}
 
+	// Use a versioned, project-identifiable User-Agent as required by Schedules Direct
 	req.Header.Set("Token", sd.Token)
-	req.Header.Set("User-Agent", AppName)
-	req.Header.Set("X-Custom-Header", AppName)
+	req.Header.Set("User-Agent", userAgent())
+	req.Header.Set("X-Custom-Header", userAgent())
 	if sd.Req.Type == "POST" {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -271,4 +271,3 @@ func (sd *SD) Connect() (err error) {
 
 	return
 }
-

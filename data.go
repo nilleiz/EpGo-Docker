@@ -18,7 +18,6 @@ func (sd *SD) Update(filename string) (err error) {
 
 	// reads the Config file
 	_, err = os.ReadFile(fmt.Sprintf("%s.yaml", Config.File))
-
 	if err != nil {
 		return
 	}
@@ -33,13 +32,14 @@ func (sd *SD) Update(filename string) (err error) {
 	if err != nil {
 		return err
 	}
-	err = sd.Login()
-	if err !=nil {
+
+	// >>> Use cached token gate instead of direct sd.Login() <<<
+	if err = applyCachedToken(sd); err != nil {
 		return err
 	}
 
 	err = sd.Status()
-	if err != nil{
+	if err != nil {
 		return err
 	}
 
