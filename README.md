@@ -74,7 +74,7 @@ docker compose up -d
 ```yaml
 Options:
   Images:
-    Download Images from Schedules Direct: false   # set true to allow on-demand fetch
+    Download Images from Schedules Direct: false   # set false to allow on-demand fetch, true will download all images on building epg
     Image Path: /app/images/                       # persistent cache directory
     Poster Aspect: 2x3                             # 2x3 | 4x3 | 16x9 | all
     Proxy Mode: true                               # enable built-in proxy
@@ -152,16 +152,16 @@ Options:
   Insert credits tag into XML file: false
 
   Images:
-    Download Images from Schedules Direct: true
+    Download Images from Schedules Direct: false  # set false to allow on-demand fetch, true will download all images on building EPG (legacy)
     Image Path: /app/images/
     Poster Aspect: 2x3
 
-    Proxy Mode: true
-    Proxy Base URL: ""          # e.g., https://epgo.example.com if accessed externally
+    Proxy Mode: true                              # set false when using "Download Images from Schedules Direct: true"
+    Proxy Base URL: ""                            # e.g., https://epgo.example.com if accessed externally
 
     The MovieDB:
-      Enable: false
-      Api Key: ""
+      Enable: false                               # set true to enable TMDB-fallback on missing SD posters
+      Api Key: ""                                 # the longer key from your TMDB-api page
 
   Rating:
     Insert rating tag into XML file: false
