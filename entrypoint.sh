@@ -44,23 +44,42 @@ __PGID__=PGID_PLACEHOLDER
 
 EPGO_BIN="/usr/bin/epgo"
 
+pids_of_epgo() {
+  # Prefer pidof (BusyBox-friendly); fall back to pgrep
+  if command -v pidof >/dev/null 2>&1; then
+    pidof epgo 2>/dev/null || true
+  else
+    pgrep epgo 2>/dev/null || true
+  fi
+}
+
 kill_running() {
-  if pgrep -f "${EPGO_BIN}" >/dev/null 2>&1; then
-    echo "[epgo-run] Found running epgo. Sending SIGTERM..."
-    # Try graceful stop
-    pkill -TERM -f "${EPGO_BIN}" || true
-    # Wait up to 15s
-    for i in $(seq 1 15); do
-      if pgrep -f "${EPGO_BIN}" >/dev/null 2>&1; then
-        sleep 1
-      else
-        break
-      fi
+  PIDS="$(pids_of_epgo)"
+  if [ -n "${PIDS}" ]; then
+    echo "[epgo-run] Found running epgo (PIDs: ${PIDS}). Sending SIGTERM..."
+    # SIGTERM each PID
+    for p in ${PIDS}; do
+      kill -TERM "$p" 2>/dev/null || true
     done
-    # Force if still alive
-    if pgrep -f "${EPGO_BIN}" >/dev/null 2>&1; then
-      echo "[epgo-run] Still running. Sending SIGKILL..."
-      pkill -KILL -f "${EPGO_BIN}" || true
+    # Wait up to 20s for graceful exit
+    for i in $(seq 1 20); do
+      sleep 1
+      STILL=""
+      for p in ${PIDS}; do
+        if kill -0 "$p" 2>/dev/null; then
+          STILL="yes"
+          break
+        fi
+      done
+      [ -z "$STILL" ] && break
+    done
+    # Force kill if any remain
+    REMAIN="$(pids_of_epgo)"
+    if [ -n "${REMAIN}" ]; then
+      echo "[epgo-run] Still running after grace period (PIDs: ${REMAIN}). Sending SIGKILL..."
+      for p in ${REMAIN}; do
+        kill -KILL "$p" 2>/dev/null || true
+      done
     fi
   fi
 }
@@ -94,7 +113,7 @@ elif [ -n "${CRON_SCHEDULE}" ]; then
 
   CLEAN_SCHEDULE=$(echo "${CRON_SCHEDULE}" | sed -e 's/^"//' -e 's/"$//')
 
-  # Log to container stdout/stderr
+  # Log to container stdout/stderr, run helper directly
   echo "${CLEAN_SCHEDULE} ${HELPER} >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/crontabs/root
   echo "" >> /etc/crontabs/root
 
