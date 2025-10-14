@@ -1,4 +1,3 @@
-
 # EPGo
 
 subredit: [epgo](https://www.reddit.com/r/EpGo/)
@@ -15,79 +14,106 @@ This image is built from source, ensuring compatibility with any Docker host arc
 
 ## ✅ Features
 
-* **Multi-Arch**: Built from source to run on any Docker host (amd64, arm64, etc.).
-* **Flexible Execution**: Run `epgo` on a cron schedule or as a single, one-off task.
-* **Secure**: Runs the application as a non-root `app` user.
-* **Auto-Initialization**: Creates a default `config.yaml` on the first run.
-* **Small Footprint**: Uses a multi-stage build to create a minimal final image.
-* **Poster Aspect control (new)**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
-* **Sharper TMDb posters (new)**: TMDb fallback now returns **w500** posters by default.
+- **Multi-Arch**: Built from source to run on any Docker host (amd64, arm64, etc.).
+- **Flexible Execution**: Run `epgo` on a cron schedule or as a single, one-off task.
+- **Secure**: Runs the application as a non-root `app` user.
+- **Auto-Initialization**: Creates a default `config.yaml` on the first run.
+- **Small Footprint**: Uses a multi-stage build to create a minimal final image.
+- **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
+- **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
+- **NEW (v1.2) Smart Image Cache & Proxy**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
 
 ---
 
 ## 🚀 Quick Start
 
-This image is controlled via environment variables in your `docker-compose.yaml` file.
+This image is controlled via environment variables in your `docker-compose.yaml`.
 
-1. Create a directory for your project:
+1) Create a project directory:
+```bash
+mkdir epgo-stack
+cd epgo-stack
+```
 
-   ```bash
-   mkdir epgo-stack
-   cd epgo-stack
-   ```
+2) Minimal `docker-compose.yaml`:
+```yaml
+services:
+  epgo:
+    image: nillivanilli0815/epgo:latest
+    container_name: epgo
+    environment:
+      - TZ=Europe/Berlin
+      - PUID=1000
+      - PGID=1000
 
-2. Create a `docker-compose.yaml` file with the following content.
+      # --- CHOOSE ONE EXECUTION MODE ---
+      - CRON_SCHEDULE=0 2 * * *     # Example: run daily at 02:00
+      # - RUN_ONCE=true             # Or run once and exit
 
-   ```yaml
-   services:
-     epgo:
-       image: nillivanilli0815/epgo:latest
-       container_name: epgo
-       environment:
-         - TZ=America/Chicago
-         - PUID=1000
-         - PGID=1000
+    volumes:
+      - ./epgo_data:/app            # persistent config/cache/XML + images
 
-         # --- CHOOSE ONE EXECUTION MODE ---
-         - CRON_SCHEDULE=0 2 * * *   # Example: Run daily at 2:00 AM
-         # - RUN_ONCE=true            # Or run once and exit
+    restart: unless-stopped
+```
 
-       volumes:
-         - ./epgo_data:/app   # persistent config/cache/XML output
-       
-       restart: unless-stopped
-   ```
+3) Start it:
+```bash
+docker compose up -d
+```
 
-3. Start the container:
+---
 
-   ```bash
-   docker compose up -d
-   ```
+## ✨ NEW in v1.2 — Smart Image Cache & Proxy
+
+**What it does**
+- When a client requests an image, EPGo fetches it **once** from Schedules Direct (SD), stores it under `/app/images/`, and serves it immediately.
+- All subsequent requests are served straight from disk (no SD round-trip).
+- Benefits: stable artwork over time, faster UIs, and fewer API requests.
+
+**YAML additions (v1.2)**
+```yaml
+Options:
+  Images:
+    Download Images from Schedules Direct: false   # set true to allow on-demand fetch
+    Image Path: /app/images/                       # persistent cache directory
+    Poster Aspect: 2x3                             # 2x3 | 4x3 | 16x9 | all
+    Proxy Mode: true                               # enable built-in proxy
+    Proxy Base URL:                                # optional; set if clients reach EPGo externally
+```
+
+**Quick notes**
+- Mount **`/app/images/`** as a persistent volume.
+- If clients access the proxy from outside your LAN, set **`Proxy Base URL`** to your public base.
+- With **`Download Images from Schedules Direct: false`**, only previously cached files are served.
+
+**Under the hood (brief)**
+- EPGo writes lightweight **JSON sidecars** next to cached images (index) and one for the **SD token**—used for quick lookups and to avoid excessive logins. (Automatic; no action required.)
 
 ---
 
 ## ⚙️ Execution Modes
 
-You must set one of the following environment variables. `RUN_ONCE` takes priority if both are set.
+Set exactly **one** of:
 
 ### Cron Schedule Mode
-
-Set the `CRON_SCHEDULE` variable to run `epgo` on a schedule. The container will run continuously as a cron daemon. Any output from `epgo` will be sent to the container's logs.
-
-* **Example**: `CRON_SCHEDULE: "0 2 * * *"` runs the task every day at 2:00 AM.
+Run continuously with cron and execute on a schedule:
+```env
+CRON_SCHEDULE=0 2 * * *
+```
+Container logs receive the task output.
 
 ### Run Once Mode
-
-Set `RUN_ONCE: "true"` to execute the `epgo` command one time. The container will exit after the task is complete.
-
-> **Note on `restart` policy**: With `RUN_ONCE`, use `restart: "no"` to avoid restart loops.
+```env
+RUN_ONCE=true
+```
+Runs a single job and exits.  
+> Tip: with `RUN_ONCE`, prefer `restart: "no"` to avoid restart loops.
 
 ---
 
 ## 🔧 Interactive Configuration
 
-Run the built-in wizard in a temporary container:
-
+Run the wizard in a temporary container:
 ```bash
 docker compose run --rm epgo epgo -configure /app/config.yaml
 ```
@@ -96,7 +122,91 @@ docker compose run --rm epgo epgo -configure /app/config.yaml
 
 ## ⚠️ Permissions
 
-The entrypoint adjusts ownership of `/app` to the non-root `app` user. On the host, the folder may appear owned by a numeric UID/GID — that’s expected and required for writes.
+The entrypoint ensures `/app` is owned by the unprivileged `app` user; host-side you may see numeric UID/GID ownership—that’s expected.
+
+---
+
+## CONFIG
+
+> Sample reflecting **Poster Aspect**, TMDb changes, and v1.2 cache/proxy options.
+
+```yaml
+Account:
+  Username: YOUR_USERNAME
+  Password: YOUR_PASSWORD
+
+Files:
+  Cache: config_cache.json
+  XMLTV: config.xml
+  The MovieDB cache file: imdb_image_cache.json
+
+Server:
+  Enable: true                 # enable the built-in HTTP server
+  Address: 0.0.0.0
+  Port: "8765"
+
+Options:
+  Live and New icons: false
+  Schedule Days: 1
+  Subtitle into Description: false
+  Insert credits tag into XML file: false
+
+  Images:
+    Download Images from Schedules Direct: true
+    Image Path: /app/images/
+    Poster Aspect: 2x3
+
+    Proxy Mode: true
+    Proxy Base URL: ""          # e.g., https://epgo.example.com if accessed externally
+
+    The MovieDB:
+      Enable: false
+      Api Key: ""
+
+  Rating:
+    Insert rating tag into XML file: false
+    Maximum rating entries. 0 for all entries: 1
+    Preferred countries. ISO 3166-1 alpha-3 country code. Leave empty for all systems:
+      - USA
+      - COL
+    Use country code as rating system: false
+
+  Show download errors from Schedules Direct in the log: false
+
+Station:
+  - Name: MTV
+    ID: "12345"
+    Lineup: SAMPLE
+```
+
+*TMDb fallback:* if enabled and SD has no image, EPGo queries TMDb; poster URLs default to **`w500`** for sharper results.
+
+---
+
+## Using the CLI
+
+Create or edit config:
+```bash
+epgo -configure MY_CONFIG_FILE.yaml
+```
+
+Generate XMLTV:
+```bash
+epgo -config MY_CONFIG_FILE.yaml
+```
+
+Help:
+```bash
+epgo -h
+```
+
+---
+
+## Notes & Tips
+
+- For v1.2 proxy mode, ensure the **server** is enabled and that `/app/images/` is persisted.
+- If you previously relied on tight cron timing, v1.2’s scheduler logic is tuned for server mode and token lifetimes.
+- Sidecars are managed automatically; no manual cleanup is required in normal operation.
 
 ---
 
