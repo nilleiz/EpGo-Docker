@@ -7,14 +7,12 @@ PGID=${PGID:-1001}
 
 echo "Ensuring user with PUID=${PUID} and group with PGID=${PGID} exists..."
 
-# Create/resolve group for PGID
 if ! getent group "${PGID}" >/dev/null 2>&1; then
   echo "Group with GID ${PGID} does not exist. Creating new group 'app'..."
   addgroup -g "${PGID}" -S app
 fi
 GROUP_NAME="$(getent group "${PGID}" | cut -d: -f1)"
 
-# Create/resolve user for PUID
 if ! getent passwd "${PUID}" >/dev/null 2>&1; then
   echo "User with UID ${PUID} does not exist. Creating new user 'app'..."
   adduser -u "${PUID}" -G "${GROUP_NAME}" -S -h /app app
@@ -31,105 +29,114 @@ if [ ! -f "$CONFIG_FILE" ]; then
   su-exec "${PUID}:${PGID}" cp "$DEFAULT_CONFIG_SRC" "$CONFIG_FILE"
 fi
 
-# --- Helper: kill-then-run wrapper ---
-# We bake the resolved PUID/PGID into the helper so cron doesn't depend on env.
-HELPER="/usr/local/bin/epgo-run.sh"
-cat > "${HELPER}" <<'EOF'
+# --- Commands ---
+EPGO_CMD="cd /app && /usr/bin/epgo -config /app/config.yaml"
+EPGO_EXEC="/sbin/su-exec ${PUID}:${PGID} sh -c '${EPGO_CMD}'"
+
+# --- Cron Wrapper (kill-and-restart) ---
+WRAPPER="/usr/local/bin/epgo-restart.sh"
+cat > "${WRAPPER}" <<'WRAP'
 #!/bin/sh
 set -e
 
-# Hardcoded at generation time:
-__PUID__=PUID_PLACEHOLDER
-__PGID__=PGID_PLACEHOLDER
+LOG(){ printf "%s epgo-cron: %s\n" "$(date -Iseconds)" "$*"; }
 
-EPGO_BIN="/usr/bin/epgo"
+# Import runtime UID/GID for su-exec, written by entrypoint right before cron starts
+. /run/epgo-env.sh
 
-pids_of_epgo() {
-  # Prefer pidof (BusyBox-friendly); fall back to pgrep
-  if command -v pidof >/dev/null 2>&1; then
-    pidof epgo 2>/dev/null || true
-  else
-    pgrep epgo 2>/dev/null || true
+LOCKDIR="/var/run/epgo-cron.lock"
+PIDFILE="/var/run/epgo.pid"
+
+# prevent overlapping runs
+if ! mkdir "${LOCKDIR}" 2>/dev/null; then
+  LOG "previous run still active; skipping"
+  exit 0
+fi
+trap 'rmdir "${LOCKDIR}" 2>/dev/null || true' EXIT
+
+# Gracefully stop any running epgo owned by PUID
+PIDS="$(pgrep -u "${PUID}" -f '/usr/bin/epgo' || true)"
+if [ -n "${PIDS}" ]; then
+  LOG "found running epgo [${PIDS}]; sending SIGTERM"
+  kill -TERM ${PIDS} 2>/dev/null || true
+
+  # wait up to 30s
+  for i in $(seq 1 30); do
+    sleep 1
+    STILL="$(ps -o pid= -p ${PIDS} 2>/dev/null | tr -d ' \n' || true)"
+    [ -z "${STILL}" ] && break
+  done
+
+  # force kill if still alive
+  STILL="$(pgrep -u "${PUID}" -f '/usr/bin/epgo' || true)"
+  if [ -n "${STILL}" ]; then
+    LOG "epgo not exiting; sending SIGKILL"
+    kill -KILL ${STILL} 2>/dev/null || true
   fi
-}
+fi
 
-kill_running() {
-  PIDS="$(pids_of_epgo)"
-  if [ -n "${PIDS}" ]; then
-    echo "[epgo-run] Found running epgo (PIDs: ${PIDS}). Sending SIGTERM..."
-    # SIGTERM each PID
-    for p in ${PIDS}; do
-      kill -TERM "$p" 2>/dev/null || true
-    done
-    # Wait up to 20s for graceful exit
-    for i in $(seq 1 20); do
-      sleep 1
-      STILL=""
-      for p in ${PIDS}; do
-        if kill -0 "$p" 2>/dev/null; then
-          STILL="yes"
-          break
-        fi
-      done
-      [ -z "$STILL" ] && break
-    done
-    # Force kill if any remain
-    REMAIN="$(pids_of_epgo)"
-    if [ -n "${REMAIN}" ]; then
-      echo "[epgo-run] Still running after grace period (PIDs: ${REMAIN}). Sending SIGKILL..."
-      for p in ${REMAIN}; do
-        kill -KILL "$p" 2>/dev/null || true
-      done
-    fi
-  fi
-}
+# Start fresh epgo in background
+LOG "starting epgo"
+# shellcheck disable=SC2086
+/sbin/su-exec "${PUID}:${PGID}" sh -c 'cd /app && /usr/bin/epgo -config /app/config.yaml' \
+  >> /proc/1/fd/1 2>> /proc/1/fd/2 &
+NEWPID=$!
+echo "${NEWPID}" > "${PIDFILE}"
+LOG "epgo started with pid ${NEWPID}"
+WRAP
+chmod +x "${WRAPPER}"
 
-run_epgo() {
-  echo "[epgo-run] Starting epgo..."
-  exec /sbin/su-exec "${__PUID__}:${__PGID__}" sh -c 'cd /app && /usr/bin/epgo -config /app/config.yaml'
-}
+# Export runtime values for the wrapper
+mkdir -p /run
+cat > /run/epgo-env.sh <<ENV
+PUID=${PUID}
+PGID=${PGID}
+ENV
 
-# Ensure we run from / to avoid cwd issues after kill
-cd /
-kill_running
-run_epgo
-EOF
+# --- Modes ---
 
-# Inject numeric IDs
-sed -i "s/PUID_PLACEHOLDER/${PUID}/g" "${HELPER}"
-sed -i "s/PGID_PLACEHOLDER/${PGID}/g" "${HELPER}"
-chmod +x "${HELPER}"
-
-# Convenience variable used below
-ECHO_NEXT_RUN="/usr/local/bin/nextrun"
-
-# --- Execution Logic ---
+# Case 1: RUN_ONCE
 if [ "${RUN_ONCE}" = "true" ]; then
-  echo "RUN_ONCE is true. Executing epgo-run helper once..."
-  exec "${HELPER}"
+  echo "RUN_ONCE is true. Running epgo once in foreground..."
+  eval "${EPGO_EXEC}"
+  echo "Task complete. Exiting."
+  exit 0
+fi
 
-elif [ -n "${CRON_SCHEDULE}" ]; then
+# Case 2: CRON_SCHEDULE
+if [ -n "${CRON_SCHEDULE}" ]; then
   echo "CRON_SCHEDULE is set. Configuring cron job..."
 
+  # Strip accidental wrapping quotes
   CLEAN_SCHEDULE=$(echo "${CRON_SCHEDULE}" | sed -e 's/^"//' -e 's/"$//')
 
-  # Log to container stdout/stderr, run helper directly
-  echo "${CLEAN_SCHEDULE} ${HELPER} >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/crontabs/root
+  # Write crontab: run wrapper; logs go to container stdout/stderr
+  echo "${CLEAN_SCHEDULE} ${WRAPPER} >> /proc/1/fd/1 2>> /proc/1/fd/2" > /etc/crontabs/root
   echo "" >> /etc/crontabs/root
 
-  if [ -x "${ECHO_NEXT_RUN}" ]; then
-    NEXT_RUN_TIME="$(${ECHO_NEXT_RUN} "${CLEAN_SCHEDULE}")"
-    echo "Next execution scheduled for: ${NEXT_RUN_TIME}"
+  # Try to show next run time if 'nextrun' exists
+  if command -v nextrun >/dev/null 2>&1; then
+    if NEXT_RUN_TIME="$(/usr/local/bin/nextrun "${CLEAN_SCHEDULE}" 2>/dev/null)"; then
+      echo "Next execution scheduled for: ${NEXT_RUN_TIME}"
+    else
+      echo "Warning: could not compute next run time from schedule: ${CLEAN_SCHEDULE}"
+    fi
   fi
 
-  echo "Starting cron daemon in the background."
+  echo "Starting cron daemon in background..."
   crond -b -l 8
 
-  echo "Container is running in cron mode. Tailing to keep PID 1 alive."
-  tail -f /dev/null
+  # Start epgo immediately on container start;
+  # cron will recycle it at the next tick.
+  echo "Launching initial epgo instance now (will be restarted by cron on schedule)..."
+  "${WRAPPER}"
 
-else
-  echo "Error: No execution mode defined."
-  echo "Please set either the CRON_SCHEDULE or RUN_ONCE environment variable."
-  exit 1
+  echo "Container is running in cron-restart mode."
+  # Keep PID 1 alive
+  tail -f /dev/null
 fi
+
+# Case 3: Neither variable set
+echo "Error: No execution mode defined."
+echo "Please set either the CRON_SCHEDULE or RUN_ONCE environment variable."
+exit 1
