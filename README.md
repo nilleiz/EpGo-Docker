@@ -79,6 +79,7 @@ Options:
     Poster Aspect: 2x3                             # 2x3 | 4x3 | 16x9 | all
     Proxy Mode: true                               # enable built-in proxy
     Proxy Base URL:                                # optional; set if clients reach EPGo externally
+    Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
 ```
 
 **Quick notes**
@@ -158,6 +159,7 @@ Options:
 
     Proxy Mode: true                              # set false when using "Download Images from Schedules Direct: true"
     Proxy Base URL: ""                            # e.g., https://epgo.example.com if accessed externally
+    Max Cache Age Days: 0                         # refresh artwork after N days (0 = disabled)
 
     The MovieDB:
       Enable: false                               # set true to enable TMDB-fallback on missing SD posters
