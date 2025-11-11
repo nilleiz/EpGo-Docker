@@ -298,26 +298,58 @@ func StartServer(dir string, port string) {
 		}
 
 		// --- LEGACY MODE: /proxy/sd/{programID} (resolver path) ---
+		maxAge := time.Duration(0)
+		if days := Config.Options.Images.MaxCacheAgeDays; days > 0 {
+			maxAge = time.Duration(days) * 24 * time.Hour
+		}
+		now := time.Now()
+
+		indexImageID := ""
+		indexImagePath := ""
+		indexImageExpired := false
+
 		// 1) Try ProgramID → imageID index
 		if imgID, ok := indexGet(programID); ok && imgID != "" {
-			filePath := filepath.Join(folderImage, imgID+".jpg")
-			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-				// ensure metadata loaded and log full details
+			indexImageID = imgID
+			indexImagePath = filepath.Join(folderImage, imgID+".jpg")
+			if fi, err := os.Stat(indexImagePath); err == nil && !fi.IsDir() {
+				expired := false
+				if maxAge > 0 && now.Sub(fi.ModTime()) > maxAge {
+					expired = true
+					indexImageExpired = true
+				}
+				if !expired {
+					// ensure metadata loaded and log full details
+					if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok {
+						_ = ensureProgramMetadata(programID)
+					}
+					if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
+						logger.Info("Proxy: serve from cache (index hit)",
+							"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath)
+					} else {
+						logger.Info("Proxy: serve from cache (index hit, no meta)",
+							"programID", programID, "imageID", imgID, "path", indexImagePath)
+					}
+					serveFileCached(w, r, indexImagePath)
+					return
+				}
+
+				// Log expiration before refreshing
 				if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok {
 					_ = ensureProgramMetadata(programID)
 				}
 				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
-					logger.Info("Proxy: serve from cache (index hit)",
-						"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+					logger.Info("Proxy: cached image expired; refreshing",
+						"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath)
 				} else {
-					logger.Info("Proxy: serve from cache (index hit, no meta)",
-						"programID", programID, "imageID", imgID, "path", filePath)
+					logger.Info("Proxy: cached image expired; refreshing",
+						"programID", programID, "imageID", imgID, "path", indexImagePath)
 				}
-				serveFileCached(w, r, filePath)
-				return
+			} else {
+				indexImageExpired = true
+				logger.Warn("Proxy: index stale, removing mapping", "programID", programID, "imageID", imgID)
+				_ = indexDelete(programID)
 			}
-			logger.Warn("Proxy: index stale, removing mapping", "programID", programID, "imageID", imgID)
-			_ = indexDelete(programID)
 		}
 
 		// 2) Resolve via metadata (or fetch-on-miss)
@@ -330,18 +362,24 @@ func StartServer(dir string, port string) {
 				}
 			}
 		}
-		if !ok || chosen.URI == "" {
-			logger.Warn("Proxy: no suitable image in metadata", "programID", programID)
-			http.NotFound(w, r)
-			return
-		}
 
-		// Category/Aspect/Size logging for resolved choice
-		logger.Info("Proxy: resolved image candidate",
-			"programID", programID,
-			"imageID", sdImageIDFromURI(chosen.URI),
-			"category", chosen.Category, "aspect", chosen.Aspect, "w", chosen.Width, "h", chosen.Height,
-			"uri", chosen.URI)
+		useResolved := ok && chosen.URI != ""
+		if useResolved {
+			logger.Info("Proxy: resolved image candidate",
+				"programID", programID,
+				"imageID", sdImageIDFromURI(chosen.URI),
+				"category", chosen.Category, "aspect", chosen.Aspect, "w", chosen.Width, "h", chosen.Height,
+				"uri", chosen.URI)
+			imageID = sdImageIDFromURI(chosen.URI)
+		} else {
+			imageID = indexImageID
+			if imageID == "" {
+				logger.Warn("Proxy: no suitable image in metadata", "programID", programID)
+				http.NotFound(w, r)
+				return
+			}
+			logger.Info("Proxy: using cached image id (no new metadata)", "programID", programID, "imageID", imageID)
+		}
 
 		// Token
 		token, err := getSDToken()
@@ -353,25 +391,33 @@ func StartServer(dir string, port string) {
 
 		// IMPORTANT: do NOT redeclare imageID; reuse existing variable to avoid shadowing
 		var imageURL string
-		imageID = sdImageIDFromURI(chosen.URI)
 		imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
 		filePath := filepath.Join(folderImage, imageID+".jpg")
 
-		// 3) Serve from disk if present (and update index)
+		// 3) Serve from disk if present (and update index) provided it hasn't expired
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-			if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok {
-				_ = ensureProgramMetadata(programID)
+			expired := false
+			if maxAge > 0 && now.Sub(fi.ModTime()) > maxAge {
+				expired = true
 			}
-			if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
-				logger.Info("Proxy: serve from cache (by imageID)",
-					"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
-			} else {
-				logger.Info("Proxy: serve from cache (by imageID, no meta)",
-					"programID", programID, "imageID", imageID, "path", filePath)
+			if !expired {
+				if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok {
+					_ = ensureProgramMetadata(programID)
+				}
+				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+					logger.Info("Proxy: serve from cache (by imageID)",
+						"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+				} else {
+					logger.Info("Proxy: serve from cache (by imageID, no meta)",
+						"programID", programID, "imageID", imageID, "path", filePath)
+				}
+				_ = indexSet(programID, imageID)
+				serveFileCached(w, r, filePath)
+				return
 			}
-			_ = indexSet(programID, imageID)
-			serveFileCached(w, r, filePath)
-			return
+			if !(indexImageExpired && indexImageID == imageID) {
+				logger.Info("Proxy: cached candidate expired; refreshing", "programID", programID, "imageID", imageID, "path", filePath)
+			}
 		}
 
 		// 4) Download (retry once on 401)

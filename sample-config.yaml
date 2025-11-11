@@ -16,6 +16,9 @@ Options:
     Images:
         Download Images: false
         Image Path: ""
+        Proxy Mode: false
+        Proxy Base URL: ""
+        Max Cache Age Days: 0
         The MovieDB:
             Enable: false
             Api Key: ""

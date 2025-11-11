@@ -119,7 +119,7 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		dateArray := strings.Fields(t.String())
 		offset := " " + dateArray[2]
 		pro.Start = t.Format("20060102150405") + offset
-		pro.Stop = t.Add(time.Second * time.Duration(s.Duration)).Format("20060102150405") + offset
+		pro.Stop = t.Add(time.Second*time.Duration(s.Duration)).Format("20060102150405") + offset
 
 		// Title
 		lang := "en"
@@ -162,12 +162,12 @@ func getProgram(channel EPGoCache) (p []Programme) {
 
 		if Config.Options.Images.ProxyMode && Config.Server.Enable {
 			// Try SD pin
-			if imageID, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok && imageID != "" {
+			if _, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok {
 				base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
 				if base == "" {
 					base = "http://" + Config.Server.Address + ":" + Config.Server.Port
 				}
-				imageURL = base + "/proxy/sd/" + s.ProgramID + "/" + imageID
+				imageURL = base + "/proxy/sd/" + s.ProgramID
 			}
 			// else: leave empty to allow TMDb fallback
 		} else {
