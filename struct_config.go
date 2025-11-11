@@ -16,9 +16,9 @@ type config struct {
 	} `yaml:"Files"`
 
 	Server struct {
-		Enable              bool   `yaml:"Enable"`
-		Address             string `yaml:"Address"`
-		Port                string `yaml:"Port"`
+		Enable  bool   `yaml:"Enable"`
+		Address string `yaml:"Address"`
+		Port    string `yaml:"Port"`
 	} `yaml:"Server"`
 
 	Options struct {
@@ -33,8 +33,9 @@ type config struct {
 
 			// Lazy on-demand proxy mode. When enabled, XMLTV uses proxied URLs and
 			// images are fetched + cached only on first client request.
-			ProxyMode    bool   `yaml:"Proxy Mode"`
-			ProxyBaseURL string `yaml:"Proxy Base URL"`
+			ProxyMode       bool   `yaml:"Proxy Mode"`
+			ProxyBaseURL    string `yaml:"Proxy Base URL"`
+			MaxCacheAgeDays int    `yaml:"Max Cache Age Days"`
 
 			Tmdb struct {
 				Enable bool   `yaml:"Enable"`

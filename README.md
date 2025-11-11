@@ -21,7 +21,7 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Small Footprint**: Uses a multi-stage build to create a minimal final image.
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
-- **NEW (v1.2) Smart Image Cache & Proxy**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
+- **NEW (v1.3) Smart Image Cache Controls**: On-demand proxy caching with configurable expiry—set "Max Cache Age Days" to auto-refresh artwork while still benefiting from TMDb fallbacks when SD art is missing.
 
 ---
 
@@ -63,14 +63,15 @@ docker compose up -d
 
 ---
 
-## ✨ NEW in v1.2 — Smart Image Cache & Proxy
+## ✨ NEW in v1.3 — Smart Image Cache Controls
 
 **What it does**
 - When a client requests an image, EPGo fetches it **once** from Schedules Direct (SD), stores it under `/app/images/`, and serves it immediately.
 - All subsequent requests are served straight from disk (no SD round-trip).
 - Benefits: stable artwork over time, faster UIs, and fewer API requests.
+- Configure **Max Cache Age Days** to automatically refresh artwork after N days—expired images are re-fetched from SD and upgraded if better art becomes available.
 
-**YAML additions (v1.2)**
+**YAML options (v1.3)**
 ```yaml
 Options:
   Images:
@@ -79,12 +80,14 @@ Options:
     Poster Aspect: 2x3                             # 2x3 | 4x3 | 16x9 | all
     Proxy Mode: true                               # enable built-in proxy
     Proxy Base URL:                                # optional; set if clients reach EPGo externally
+    Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
 ```
 
 **Quick notes**
 - Mount **`/app/images/`** as a persistent volume.
 - If clients access the proxy from outside your LAN, set **`Proxy Base URL`** to your public base.
 - With **`Download Images from Schedules Direct: false`**, only previously cached files are served.
+- When **`Max Cache Age Days`** is greater than zero, the proxy logs the configured limit on startup and whenever it refreshes an expired cached image.
 
 **Under the hood (brief)**
 - EPGo writes lightweight **JSON sidecars** next to cached images (index) and one for the **SD token**—used for quick lookups and to avoid excessive logins. (Automatic; no action required.)
@@ -128,7 +131,7 @@ The entrypoint ensures `/app` is owned by the unprivileged `app` user; host-side
 
 ## CONFIG
 
-> Sample reflecting **Poster Aspect**, TMDb changes, and v1.2 cache/proxy options.
+> Sample reflecting **Poster Aspect**, TMDb changes, and v1.3 cache/proxy options.
 
 ```yaml
 Account:
@@ -158,6 +161,7 @@ Options:
 
     Proxy Mode: true                              # set false when using "Download Images from Schedules Direct: true"
     Proxy Base URL: ""                            # e.g., https://epgo.example.com if accessed externally
+    Max Cache Age Days: 0                         # refresh artwork after N days (0 = disabled)
 
     The MovieDB:
       Enable: false                               # set true to enable TMDB-fallback on missing SD posters
@@ -204,8 +208,8 @@ epgo -h
 
 ## Notes & Tips
 
-- For v1.2 proxy mode, ensure the **server** is enabled and that `/app/images/` is persisted.
-- If you previously relied on tight cron timing, v1.2’s scheduler logic is tuned for server mode and token lifetimes.
+- For proxy mode, ensure the **server** is enabled and that `/app/images/` is persisted.
+- If you previously relied on tight cron timing, the proxy-capable scheduler logic is tuned for server mode and token lifetimes.
 - Sidecars are managed automatically; no manual cleanup is required in normal operation.
 
 ---

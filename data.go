@@ -27,6 +27,8 @@ func (sd *SD) Update(filename string) (err error) {
 		return
 	}
 
+	logProxyCacheAgeHint()
+
 	// loads default functions and variables
 	err = sd.Init()
 	if err != nil {

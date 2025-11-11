@@ -11,8 +11,8 @@ import (
 // Names (base = your fork, non-base = upstream)
 const (
 	AppName     = "EPGo-Docker" // your Docker fork
-	Version     = "v1.2"
-	BaseName    = "EPGo"        // upstream app
+	Version     = "v1.3"
+	BaseName    = "EPGo" // upstream app
 	BaseVersion = "v3.2.1"
 )
 
@@ -92,12 +92,13 @@ func main() {
 				port = "8080"
 			}
 
+			maxCacheDays := Config.Options.Images.MaxCacheAgeDays
 			if err != nil {
 				logger.Warn("EPG fetch failed; starting image proxy anyway so cached artwork keeps working",
-					"address", Config.Server.Address, "port", port, "dir", imgDir)
+					"address", Config.Server.Address, "port", port, "dir", imgDir, "max_cache_age_days", maxCacheDays)
 			} else {
 				logger.Info("Starting image proxy after successful EPG refresh",
-					"address", Config.Server.Address, "port", port, "dir", imgDir)
+					"address", Config.Server.Address, "port", port, "dir", imgDir, "max_cache_age_days", maxCacheDays)
 			}
 
 			StartServer(imgDir, port) // blocks
