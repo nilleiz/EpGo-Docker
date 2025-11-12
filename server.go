@@ -312,7 +312,7 @@ func StartServer(dir string, port string) {
 			}
 			_ = indexSet(programID, imageID)
 			// Always report category (fetch metadata if missing)
-			logWithMeta("Proxy: serve freshly cached (pinned)")
+			logWithMeta("Proxy: serve freshly cached (pinned)", true)
 			serveFileCached(w, r, filePath)
 			return
 		}
