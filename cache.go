@@ -214,6 +214,10 @@ func (c *cache) AddMetadata(gzip *[]byte, wg *sync.WaitGroup) {
 		wg.Done()
 	}()
 
+	if c.Metadata == nil {
+		c.Metadata = make(map[string]EPGoCache)
+	}
+
 	b, err := gUnzip(*gzip)
 	if err != nil {
 		logger.Error("unable to unzip metadata", "error", err)
