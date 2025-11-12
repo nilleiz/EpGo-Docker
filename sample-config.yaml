@@ -19,6 +19,7 @@ Options:
         Proxy Mode: false
         Proxy Base URL: ""
         Max Cache Age Days: 0
+        Purge Stale Posters: false
         The MovieDB:
             Enable: false
             Api Key: ""
