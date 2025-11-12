@@ -24,6 +24,7 @@ type config struct {
 	Options struct {
 		LiveIcons               bool `yaml:"Live and New icons"`
 		Schedule                int  `yaml:"Schedule Days"`
+		SkipRefreshHours        int  `yaml:"Skip EPG refresh if XMLTV younger than hours"`
 		SubtitleIntoDescription bool `yaml:"Subtitle into Description"`
 		Credits                 bool `yaml:"Insert credits tag into XML file"`
 		Images                  struct {

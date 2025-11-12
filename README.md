@@ -159,6 +159,7 @@ Server:
 Options:
   Live and New icons: false
   Schedule Days: 1
+  Skip EPG refresh if XMLTV younger than hours: 0   # skip SD refresh when recent XML exists (0 = always refresh)
   Subtitle into Description: false
   Insert credits tag into XML file: false
 
@@ -297,6 +298,7 @@ Server:
 Options:
   Live and New icons: false
   Schedule Days: 1
+  Skip EPG refresh if XMLTV younger than hours: 0
   Subtitle into Description: false
   Insert credits tag into XML file: false
 
