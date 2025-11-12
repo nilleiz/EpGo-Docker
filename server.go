@@ -171,13 +171,7 @@ func StartServer(dir string, port string) {
 			imageID = strings.TrimSuffix(parts[1], ".jpg")
 		}
 
-		// Global pause?
-		if block, rem := shouldBlockGlobal(); block {
-			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", rem.Seconds()))
-			http.Error(w, "image downloads paused due to upstream limits", http.StatusTooManyRequests)
-			logger.Warn("Proxy: global pause in effect; denying image download", "programID", programID, "remaining", rem)
-			return
-		}
+		blockGlobal, blockRemain := shouldBlockGlobal()
 
 		// Ensure image folder exists
 		folderImage := Config.Options.Images.Path
@@ -193,15 +187,14 @@ func StartServer(dir string, port string) {
 		if imageID != "" {
 			filePath := filepath.Join(folderImage, imageID+".jpg")
 
-			logWithMeta := func(prefix string) {
+			logWithMeta := func(prefix string, allowMetaFetch bool) {
 				cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID)
 				if ok {
 					logger.Info(prefix,
 						"programID", programID, "imageID", imageID,
 						"category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
 				} else {
-					// Try to fetch metadata and retry once
-					if ensureProgramMetadata(programID) {
+					if allowMetaFetch && ensureProgramMetadata(programID) {
 						if cat2, asp2, w2, h2, ok2 := lookupImageMeta(programID, imageID); ok2 {
 							logger.Info(prefix,
 								"programID", programID, "imageID", imageID,
@@ -216,9 +209,16 @@ func StartServer(dir string, port string) {
 
 			// 1) Serve from disk if present
 			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-				logWithMeta("Proxy: serve pinned from cache")
+				logWithMeta("Proxy: serve pinned from cache", !blockGlobal)
 				_ = indexSet(programID, imageID)
 				serveFileCached(w, r, filePath)
+				return
+			}
+
+			if blockGlobal {
+				w.Header().Set("Retry-After", fmt.Sprintf("%.0f", blockRemain.Seconds()))
+				http.Error(w, "image downloads paused due to upstream limits", http.StatusTooManyRequests)
+				logger.Warn("Proxy: global pause in effect; denying image download", "programID", programID, "remaining", blockRemain)
 				return
 			}
 
@@ -368,7 +368,7 @@ func StartServer(dir string, port string) {
 					}
 					if !expired {
 						// ensure metadata loaded and log full details
-						if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok {
+						if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok && !blockGlobal {
 							_ = ensureProgramMetadata(programID)
 						}
 						if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
@@ -384,7 +384,19 @@ func StartServer(dir string, port string) {
 					}
 
 					// Log expiration before refreshing
-					if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok {
+					if blockGlobal {
+						if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
+							logger.Info("Proxy: serve expired cache during global pause",
+								"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
+						} else {
+							logger.Info("Proxy: serve expired cache during global pause",
+								"programID", programID, "imageID", imgID, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
+						}
+						_ = indexSet(programID, imgID)
+						serveFileCached(w, r, indexImagePath)
+						return
+					}
+					if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok && !blockGlobal {
 						_ = ensureProgramMetadata(programID)
 					}
 					if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
@@ -405,7 +417,7 @@ func StartServer(dir string, port string) {
 		// 2) Resolve via metadata (or fetch-on-miss)
 		chosen, ok := Cache.resolveSDImageForProgram(programID)
 		if !ok || chosen.URI == "" {
-			if ensureProgramMetadata(programID) {
+			if !blockGlobal && ensureProgramMetadata(programID) {
 				if ch2, ok2 := Cache.resolveSDImageForProgram(programID); ok2 && ch2.URI != "" {
 					chosen = ch2
 					ok = true
@@ -424,11 +436,24 @@ func StartServer(dir string, port string) {
 		} else {
 			imageID = indexImageID
 			if imageID == "" {
-				logger.Warn("Proxy: no suitable image in metadata", "programID", programID)
-				http.NotFound(w, r)
+				if blockGlobal {
+					w.Header().Set("Retry-After", fmt.Sprintf("%.0f", blockRemain.Seconds()))
+					http.Error(w, "image downloads paused due to upstream limits", http.StatusTooManyRequests)
+					logger.Warn("Proxy: global pause in effect; no cached image available", "programID", programID, "remaining", blockRemain)
+				} else {
+					logger.Warn("Proxy: no suitable image in metadata", "programID", programID)
+					http.NotFound(w, r)
+				}
 				return
 			}
 			logger.Info("Proxy: using cached image id (no new metadata)", "programID", programID, "imageID", imageID)
+		}
+
+		if blockGlobal {
+			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", blockRemain.Seconds()))
+			http.Error(w, "image downloads paused due to upstream limits", http.StatusTooManyRequests)
+			logger.Warn("Proxy: global pause in effect; denying image download", "programID", programID, "remaining", blockRemain)
+			return
 		}
 
 		// Token
@@ -471,7 +496,7 @@ func StartServer(dir string, port string) {
 					expired = true
 				}
 				if !expired {
-					if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok {
+					if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok && !blockGlobal {
 						_ = ensureProgramMetadata(programID)
 					}
 					if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
