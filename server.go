@@ -332,11 +332,15 @@ func StartServer(dir string, port string) {
 		indexImageExpired := false
 
 		// 1) Try ProgramID → imageID index
-		if imgID, ok := indexGet(programID); ok && imgID != "" {
+		if entry, ok := indexGetEntry(programID); ok && entry.ImageID != "" {
+			imgID := entry.ImageID
 			indexImageID = imgID
 			indexImagePath = filepath.Join(folderImage, imgID+".jpg")
 			if fi, err := os.Stat(indexImagePath); err == nil && !fi.IsDir() {
-				lastTouch := fi.ModTime()
+				lastTouch := entry.lastRequest()
+				if lastTouch.IsZero() {
+					lastTouch = fi.ModTime()
+				}
 				purged := false
 				if purgeEnabled && now.Sub(lastTouch) > purgeThreshold {
 					logger.Info("Proxy: purging stale cached image (index hit)",
@@ -374,6 +378,7 @@ func StartServer(dir string, port string) {
 							logger.Info("Proxy: serve from cache (index hit, no meta)",
 								"programID", programID, "imageID", imgID, "path", indexImagePath)
 						}
+						_ = indexSet(programID, imgID)
 						serveFileCached(w, r, indexImagePath)
 						return
 					}
@@ -441,7 +446,10 @@ func StartServer(dir string, port string) {
 
 		// 3) Serve from disk if present (and update index) provided it hasn't expired
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
-			lastTouch := fi.ModTime()
+			lastTouch := indexLastRequestForImage(imageID)
+			if lastTouch.IsZero() {
+				lastTouch = fi.ModTime()
+			}
 			purged := false
 			if purgeEnabled && now.Sub(lastTouch) > purgeThreshold {
 				logger.Info("Proxy: purging stale cached image",
