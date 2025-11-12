@@ -136,6 +136,13 @@ func StartServer(dir string, port string) {
 	// Load ProgramID → imageID index
 	indexInit()
 
+	cacheDays := Config.Options.Images.MaxCacheAgeDays
+	if cacheDays > 0 {
+		logger.Info("Proxy: configured max cache age", "max_cache_days", cacheDays)
+	} else {
+		logger.Info("Proxy: configured for indefinite cache age", "max_cache_days", cacheDays)
+	}
+
 	mux := http.NewServeMux()
 
 	// /proxy/sd/{programID}[/<imageID>]
@@ -340,10 +347,10 @@ func StartServer(dir string, port string) {
 				}
 				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
 					logger.Info("Proxy: cached image expired; refreshing",
-						"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath)
+						"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
 				} else {
 					logger.Info("Proxy: cached image expired; refreshing",
-						"programID", programID, "imageID", imgID, "path", indexImagePath)
+						"programID", programID, "imageID", imgID, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
 				}
 			} else {
 				indexImageExpired = true

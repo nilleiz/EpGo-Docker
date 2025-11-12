@@ -21,7 +21,8 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Small Footprint**: Uses a multi-stage build to create a minimal final image.
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
-- **NEW (v1.2) Smart Image Cache & Proxy**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
+- **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh (0 keeps images indefinitely).
+- **Smart Image Cache & Proxy (v1.2+)**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
 
 ---
 
@@ -63,6 +64,13 @@ docker compose up -d
 
 ---
 
+## ✨ NEW in v1.3 — Cache expiry controls
+
+Keep your artwork fresh without hammering the API. Version **1.3** introduces a configurable cache lifetime via `Max Cache Age Days`—set it to the number of days you want to retain pinned images before a background refresh, or leave it at `0` to keep cached art indefinitely.
+
+- Startup logs now confirm the configured lifetime so you can double-check your deployment.
+- When an image is refreshed because it aged out, the proxy log line includes the configured maximum.
+
 ## ✨ NEW in v1.2 — Smart Image Cache & Proxy
 
 **What it does**
@@ -70,7 +78,7 @@ docker compose up -d
 - All subsequent requests are served straight from disk (no SD round-trip).
 - Benefits: stable artwork over time, faster UIs, and fewer API requests.
 
-**YAML additions (v1.2)**
+**YAML additions (v1.2+)**
 ```yaml
 Options:
   Images:
@@ -129,7 +137,7 @@ The entrypoint ensures `/app` is owned by the unprivileged `app` user; host-side
 
 ## CONFIG
 
-> Sample reflecting **Poster Aspect**, TMDb changes, and v1.2 cache/proxy options.
+> Sample reflecting **Poster Aspect**, TMDb changes, and v1.2+ cache/proxy options (including v1.3 cache expiry).
 
 ```yaml
 Account:
