@@ -70,6 +70,7 @@ Keep your artwork fresh without hammering the API. Version **1.3** introduces a 
 
 - Startup logs now confirm the configured lifetime so you can double-check your deployment.
 - When an image is refreshed because it aged out, the proxy log line includes the configured maximum.
+- Enable `Purge Stale Posters` to delete posters that haven’t been requested for **twice** the configured lifetime (e.g., 14 days when `Max Cache Age Days` is `7`).
 
 ## ✨ NEW in v1.2 — Smart Image Cache & Proxy
 
@@ -88,6 +89,7 @@ Options:
     Proxy Mode: true                               # enable built-in proxy
     Proxy Base URL:                                # optional; set if clients reach EPGo externally
     Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
+    Purge Stale Posters: false                     # if true, remove posters untouched for 2× Max Cache Age Days
 ```
 
 **Quick notes**
@@ -168,6 +170,7 @@ Options:
     Proxy Mode: true                              # set false when using "Download Images from Schedules Direct: true"
     Proxy Base URL: ""                            # e.g., https://epgo.example.com if accessed externally
     Max Cache Age Days: 0                         # refresh artwork after N days (0 = disabled)
+    Purge Stale Posters: false                    # remove posters untouched for 2× Max Cache Age Days
 
     The MovieDB:
       Enable: false                               # set true to enable TMDB-fallback on missing SD posters

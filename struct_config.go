@@ -36,6 +36,7 @@ type config struct {
 			ProxyMode       bool   `yaml:"Proxy Mode"`
 			ProxyBaseURL    string `yaml:"Proxy Base URL"`
 			MaxCacheAgeDays int    `yaml:"Max Cache Age Days"`
+			PurgeStale      bool   `yaml:"Purge Stale Posters"`
 
 			Tmdb struct {
 				Enable bool   `yaml:"Enable"`
