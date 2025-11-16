@@ -344,6 +344,7 @@ func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data,
 
 	// 1) Filter to allowed categories only (and skip blocked IDs)
 	filtered := make([]Data, 0, len(m.Data))
+	blockedCats := make(map[string]struct{})
 	for _, d := range m.Data {
 		imageID := sdImageIDFromURI(d.URI)
 		if imageID == "" {
@@ -359,6 +360,19 @@ func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data,
 	}
 	if len(filtered) == 0 {
 		return "", Data{}, false
+	}
+
+	if len(blockedCats) > 0 {
+		nonBlockedCat := make([]Data, 0, len(filtered))
+		for _, d := range filtered {
+			if _, wasBlockedCat := blockedCats[strings.ToLower(d.Category)]; wasBlockedCat {
+				continue
+			}
+			nonBlockedCat = append(nonBlockedCat, d)
+		}
+		if len(nonBlockedCat) > 0 {
+			filtered = nonBlockedCat
+		}
 	}
 
 	// 2) Aspect requirement if desired is set and not "all"
@@ -406,6 +420,7 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 
 		// allowed categories only (and skip blocked IDs)
 		filtered := make([]Data, 0, len(m.Data))
+		blockedCats := make(map[string]struct{})
 		for _, d := range m.Data {
 			imageID := sdImageIDFromURI(d.URI)
 			if imageID == "" {
@@ -421,6 +436,19 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 		}
 		if len(filtered) == 0 {
 			return
+		}
+
+		if len(blockedCats) > 0 {
+			nonBlockedCat := make([]Data, 0, len(filtered))
+			for _, d := range filtered {
+				if _, wasBlockedCat := blockedCats[strings.ToLower(d.Category)]; wasBlockedCat {
+					continue
+				}
+				nonBlockedCat = append(nonBlockedCat, d)
+			}
+			if len(nonBlockedCat) > 0 {
+				filtered = nonBlockedCat
+			}
 		}
 
 		// desired aspect enforcement
