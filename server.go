@@ -227,6 +227,13 @@ func StartServer(dir string, port string) {
 		if imageID != "" {
 			filePath := filepath.Join(folderImage, imageID+".jpg")
 
+			if isImageBlocked(imageID) {
+				purgeBlockedImage(imageID, folderImage)
+				logger.Warn("Proxy: blocked image requested (pinned)", "programID", programID, "imageID", imageID)
+				http.NotFound(w, r)
+				return
+			}
+
 			logWithMeta := func(prefix string, allowMetaFetch bool) {
 				cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID)
 				if ok {
@@ -374,83 +381,91 @@ func StartServer(dir string, port string) {
 		// 1) Try ProgramID → imageID index
 		if entry, ok := indexGetEntry(programID); ok && entry.ImageID != "" {
 			imgID := entry.ImageID
-			indexImageID = imgID
-			indexImagePath = filepath.Join(folderImage, imgID+".jpg")
-			if fi, err := os.Stat(indexImagePath); err == nil && !fi.IsDir() {
-				lastTouch := entry.lastRequest()
-				if lastTouch.IsZero() {
-					lastTouch = fi.ModTime()
-				}
-				purged := false
-				if purgeEnabled && now.Sub(lastTouch) > purgeThreshold {
-					logger.Info("Proxy: purging stale cached image (index hit)",
-						"programID", programID, "imageID", imgID, "path", indexImagePath,
-						"last_request_utc", lastTouch.UTC(), "purge_after_days", purgeAfterDays)
-					if err := os.Remove(indexImagePath); err != nil {
-						logger.Warn("Proxy: failed to remove stale cached image",
-							"programID", programID, "imageID", imgID, "path", indexImagePath, "error", err)
-					} else {
-						if err := indexDeleteImageIDs([]string{imgID}); err != nil {
-							logger.Warn("Proxy: failed to prune index for stale cached image",
-								"imageID", imgID, "error", err)
+			if isImageBlocked(imgID) {
+				logger.Warn("Proxy: blocked image found in index; purging", "programID", programID, "imageID", imgID)
+				purgeBlockedImage(imgID, folderImage)
+				indexImageExpired = true
+				indexImageID = ""
+				indexImagePath = ""
+			} else {
+				indexImageID = imgID
+				indexImagePath = filepath.Join(folderImage, imgID+".jpg")
+				if fi, err := os.Stat(indexImagePath); err == nil && !fi.IsDir() {
+					lastTouch := entry.lastRequest()
+					if lastTouch.IsZero() {
+						lastTouch = fi.ModTime()
+					}
+					purged := false
+					if purgeEnabled && now.Sub(lastTouch) > purgeThreshold {
+						logger.Info("Proxy: purging stale cached image (index hit)",
+							"programID", programID, "imageID", imgID, "path", indexImagePath,
+							"last_request_utc", lastTouch.UTC(), "purge_after_days", purgeAfterDays)
+						if err := os.Remove(indexImagePath); err != nil {
+							logger.Warn("Proxy: failed to remove stale cached image",
+								"programID", programID, "imageID", imgID, "path", indexImagePath, "error", err)
+						} else {
+							if err := indexDeleteImageIDs([]string{imgID}); err != nil {
+								logger.Warn("Proxy: failed to prune index for stale cached image",
+									"imageID", imgID, "error", err)
+							}
 						}
-					}
-					indexImageExpired = true
-					purged = true
-					indexImageID = ""
-					indexImagePath = ""
-				}
-				if !purged {
-					expired := false
-					if maxAge > 0 && now.Sub(lastTouch) > maxAge {
-						expired = true
 						indexImageExpired = true
+						purged = true
+						indexImageID = ""
+						indexImagePath = ""
 					}
-					if !expired {
-						// ensure metadata loaded and log full details
+					if !purged {
+						expired := false
+						if maxAge > 0 && now.Sub(lastTouch) > maxAge {
+							expired = true
+							indexImageExpired = true
+						}
+						if !expired {
+							// ensure metadata loaded and log full details
+							if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok && !blockGlobal {
+								_ = ensureProgramMetadata(programID)
+							}
+							if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
+								logger.Info("Proxy: serve from cache (index hit)",
+									"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath)
+							} else {
+								logger.Info("Proxy: serve from cache (index hit, no meta)",
+									"programID", programID, "imageID", imgID, "path", indexImagePath)
+							}
+							_ = indexSet(programID, imgID)
+							serveFileCached(w, r, indexImagePath)
+							return
+						}
+
+						// Log expiration before refreshing
+						if blockGlobal {
+							if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
+								logger.Info("Proxy: serve expired cache during global pause",
+									"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
+							} else {
+								logger.Info("Proxy: serve expired cache during global pause",
+									"programID", programID, "imageID", imgID, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
+							}
+							_ = indexSet(programID, imgID)
+							serveFileCached(w, r, indexImagePath)
+							return
+						}
 						if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok && !blockGlobal {
 							_ = ensureProgramMetadata(programID)
 						}
 						if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
-							logger.Info("Proxy: serve from cache (index hit)",
-								"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath)
-						} else {
-							logger.Info("Proxy: serve from cache (index hit, no meta)",
-								"programID", programID, "imageID", imgID, "path", indexImagePath)
-						}
-						_ = indexSet(programID, imgID)
-						serveFileCached(w, r, indexImagePath)
-						return
-					}
-
-					// Log expiration before refreshing
-					if blockGlobal {
-						if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
-							logger.Info("Proxy: serve expired cache during global pause",
+							logger.Info("Proxy: cached image expired; refreshing",
 								"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
 						} else {
-							logger.Info("Proxy: serve expired cache during global pause",
+							logger.Info("Proxy: cached image expired; refreshing",
 								"programID", programID, "imageID", imgID, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
 						}
-						_ = indexSet(programID, imgID)
-						serveFileCached(w, r, indexImagePath)
-						return
 					}
-					if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok && !blockGlobal {
-						_ = ensureProgramMetadata(programID)
-					}
-					if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
-						logger.Info("Proxy: cached image expired; refreshing",
-							"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
-					} else {
-						logger.Info("Proxy: cached image expired; refreshing",
-							"programID", programID, "imageID", imgID, "path", indexImagePath, "max_cache_days", Config.Options.Images.MaxCacheAgeDays)
-					}
+				} else {
+					indexImageExpired = true
+					logger.Warn("Proxy: index stale, removing mapping", "programID", programID, "imageID", imgID)
+					_ = indexDelete(programID)
 				}
-			} else {
-				indexImageExpired = true
-				logger.Warn("Proxy: index stale, removing mapping", "programID", programID, "imageID", imgID)
-				_ = indexDelete(programID)
 			}
 		}
 
@@ -487,6 +502,13 @@ func StartServer(dir string, port string) {
 				return
 			}
 			logger.Info("Proxy: using cached image id (no new metadata)", "programID", programID, "imageID", imageID)
+		}
+
+		if isImageBlocked(imageID) {
+			purgeBlockedImage(imageID, folderImage)
+			logger.Warn("Proxy: blocked image requested", "programID", programID, "imageID", imageID)
+			http.NotFound(w, r)
+			return
 		}
 
 		if blockGlobal {
