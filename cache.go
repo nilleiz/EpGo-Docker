@@ -34,6 +34,19 @@ func allowedCategoryRank(cat string) (int, bool) {
 	}
 }
 
+func tierRank(tier string) int {
+	switch strings.ToLower(tier) {
+	case "show", "series":
+		return 0
+	case "season":
+		return 1
+	case "episode":
+		return 2
+	default:
+		return 3
+	}
+}
+
 func aspectRank(aspect string) int {
 	// Used only when no explicit Poster Aspect is configured.
 	switch strings.ToLower(aspect) {
@@ -52,6 +65,32 @@ func aspectRank(aspect string) int {
 	default:
 		return 99
 	}
+}
+
+// imageScore returns a ranking score for an SD image candidate based on the
+// configured PosterAspect, category, and tier preferences. It also enforces
+// allowed categories and (when configured) aspect matching. ok=false means the
+// image does not qualify (category not allowed or aspect mismatch when
+// explicitly set).
+func imageScore(d Data, desiredAspect string) (score int, ok bool) {
+	catRank, allowed := allowedCategoryRank(d.Category)
+	if !allowed {
+		return 0, false
+	}
+
+	desired := strings.TrimSpace(desiredAspect)
+	if desired != "" && !strings.EqualFold(desired, "all") {
+		if !strings.EqualFold(d.Aspect, desired) {
+			return 0, false
+		}
+	}
+
+	aRank := 0
+	if desired == "" || strings.EqualFold(desired, "all") {
+		aRank = aspectRank(d.Aspect)
+	}
+
+	return tierRank(d.Tier)*100 + catRank*10 + aRank, true
 }
 
 // ------------------------------------------------------------------
@@ -329,47 +368,25 @@ func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data,
 
 	desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
 
-	// 1) Filter to allowed categories only
-	filtered := make([]Data, 0, len(m.Data))
-	for _, d := range m.Data {
-		if _, allowed := allowedCategoryRank(d.Category); allowed {
-			filtered = append(filtered, d)
-		}
-	}
-	if len(filtered) == 0 {
-		return "", Data{}, false
-	}
-
-	// 2) Aspect requirement if desired is set and not "all"
-	if desired != "" && !strings.EqualFold(desired, "all") {
-		tmp := make([]Data, 0, len(filtered))
-		for _, d := range filtered {
-			if strings.EqualFold(d.Aspect, desired) {
-				tmp = append(tmp, d)
-			}
-		}
-		if len(tmp) == 0 {
-			// strict: no SD image if desired aspect not present
-			return "", Data{}, false
-		}
-		filtered = tmp
-	}
-
-	// 3) Score: categoryRank*10 + aspectRank (aspectRank only used if desired is empty/all)
+	// Score: tierRank*100 + categoryRank*10 + aspectRank (aspectRank only used if desired is empty/all)
 	bestScore := 1 << 30
 	bestWidth := -1
-	for _, d := range filtered {
-		catRank, _ := allowedCategoryRank(d.Category)
-		aRank := 0
-		if desired == "" || strings.EqualFold(desired, "all") {
-			aRank = aspectRank(d.Aspect)
+	matchCount := 0
+	for _, d := range m.Data {
+		score, allowed := imageScore(d, desired)
+		if !allowed {
+			continue
 		}
-		score := catRank*10 + aRank
+		matchCount++
 		if score < bestScore || (score == bestScore && d.Width > bestWidth) {
 			bestScore = score
 			bestWidth = d.Width
 			chosen = d
 		}
+	}
+
+	if matchCount == 0 {
+		return "", Data{}, false
 	}
 
 	if chosen.URI == "" {
@@ -382,48 +399,26 @@ func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data,
 func (c *cache) GetIcon(id string) (i []Icon) {
 	if m, ok := c.Metadata[id]; ok {
 		desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
-
-		// allowed categories only
-		filtered := make([]Data, 0, len(m.Data))
-		for _, d := range m.Data {
-			if _, allowed := allowedCategoryRank(d.Category); allowed {
-				filtered = append(filtered, d)
-			}
-		}
-		if len(filtered) == 0 {
-			return
-		}
-
-		// desired aspect enforcement
-		if desired != "" && !strings.EqualFold(desired, "all") {
-			tmp := make([]Data, 0, len(filtered))
-			for _, d := range filtered {
-				if strings.EqualFold(d.Aspect, desired) {
-					tmp = append(tmp, d)
-				}
-			}
-			if len(tmp) == 0 {
-				return
-			}
-			filtered = tmp
-		}
-
-		// category+aspect scoring
+		// category+aspect scoring with tier preference (show > season > episode)
 		var chosen Data
 		bestScore := 1 << 30
 		bestWidth := -1
-		for _, d := range filtered {
-			catRank, _ := allowedCategoryRank(d.Category)
-			aRank := 0
-			if desired == "" || strings.EqualFold(desired, "all") {
-				aRank = aspectRank(d.Aspect)
+		matchCount := 0
+		for _, d := range m.Data {
+			score, allowed := imageScore(d, desired)
+			if !allowed {
+				continue
 			}
-			score := catRank*10 + aRank
+			matchCount++
 			if score < bestScore || (score == bestScore && d.Width > bestWidth) {
 				bestScore = score
 				bestWidth = d.Width
 				chosen = d
 			}
+		}
+
+		if matchCount == 0 {
+			return
 		}
 
 		if chosen.URI != "" {

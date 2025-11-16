@@ -101,12 +101,30 @@ func lookupImageMeta(programID, imageID string) (category, aspect string, width,
 	if !ok {
 		return "", "", 0, 0, false
 	}
+	desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
+
+	bestScore := 1 << 30
+	bestWidth := -1
+	var best Data
 	for _, d := range m.Data {
-		if sdImageIDFromURI(d.URI) == imageID {
-			return d.Category, d.Aspect, d.Width, d.Height, true
+		if sdImageIDFromURI(d.URI) != imageID {
+			continue
+		}
+		score, allowed := imageScore(d, desired)
+		if !allowed {
+			continue
+		}
+		if score < bestScore || (score == bestScore && d.Width > bestWidth) {
+			bestScore = score
+			bestWidth = d.Width
+			best = d
 		}
 	}
-	return "", "", 0, 0, false
+
+	if best.URI == "" {
+		return "", "", 0, 0, false
+	}
+	return best.Category, best.Aspect, best.Width, best.Height, true
 }
 
 // sdErrorTime extracts a reference time from an SD JSON error body.
