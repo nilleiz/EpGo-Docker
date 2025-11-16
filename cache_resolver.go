@@ -5,7 +5,7 @@ import "strings"
 // resolveSDImageForProgram mirrors the strict selection from GetChosenSDImage:
 // - Allowed categories only (Poster/Box/Banner/VOD Art)
 // - If Poster Aspect is set (and not "all"), enforce exact aspect
-// - Score = catRank*10 + aspectRank; ties by larger width
+// - Score = tierRank*100 + catRank*10 + aspectRank; ties by larger width
 // - No generic fallback (returns false if no qualifying image)
 func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 	m, ok := c.Metadata[programID]
@@ -40,7 +40,7 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 		filtered = tmp
 	}
 
-	// scoring
+	// scoring (prefer show > season > episode via tier)
 	var chosen Data
 	bestScore := 1 << 30
 	bestWidth := -1
@@ -50,7 +50,7 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 		if desired == "" || strings.EqualFold(desired, "all") {
 			aRank = aspectRank(d.Aspect)
 		}
-		score := catRank*10 + aRank
+		score := tierRank(d.Tier)*100 + catRank*10 + aRank
 		if score < bestScore || (score == bestScore && d.Width > bestWidth) {
 			bestScore = score
 			bestWidth = d.Width
