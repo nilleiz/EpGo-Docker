@@ -354,7 +354,6 @@ func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data,
 			continue
 		}
 		if isImageBlocked(imageID) {
-			blockedCats[strings.ToLower(d.Category)] = struct{}{}
 			continue
 		}
 		filtered = append(filtered, d)
@@ -431,7 +430,6 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 				continue
 			}
 			if isImageBlocked(imageID) {
-				blockedCats[strings.ToLower(d.Category)] = struct{}{}
 				continue
 			}
 			filtered = append(filtered, d)

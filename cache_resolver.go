@@ -27,7 +27,6 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 			continue
 		}
 		if isImageBlocked(imageID) {
-			blockedCats[strings.ToLower(d.Category)] = struct{}{}
 			continue
 		}
 		filtered = append(filtered, d)

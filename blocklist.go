@@ -55,7 +55,6 @@ func loadBlockList() {
 
 	data, err := os.ReadFile(blockPathV)
 	if err != nil {
-		logger.Warn("Proxy: unable to read blocklist file", "path", blockPathV, "error", err)
 		blockMu.Lock()
 		blockActive = false
 		blockEntries = nil
@@ -74,7 +73,6 @@ func loadBlockList() {
 		entries[line] = struct{}{}
 	}
 	if err := scanner.Err(); err != nil {
-		logger.Warn("Proxy: error scanning blocklist file", "path", blockPathV, "error", err)
 		blockMu.Lock()
 		blockActive = false
 		blockEntries = nil
@@ -88,8 +86,6 @@ func loadBlockList() {
 	blockActive = true
 	blockModTime = modTime
 	blockMu.Unlock()
-
-	logger.Info("Proxy: loaded image blocklist", "path", blockPathV, "entries", len(entries))
 }
 
 func isImageBlocked(imageID string) bool {
