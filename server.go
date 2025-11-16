@@ -211,6 +211,10 @@ func StartServer(dir string, port string) {
 			imageID = strings.TrimSuffix(parts[1], ".jpg")
 		}
 
+		if overrideID, ok := overrideImageForProgram(programID); ok {
+			imageID = overrideID
+		}
+
 		blockGlobal, blockRemain := shouldBlockGlobal()
 
 		// Ensure image folder exists
@@ -714,6 +718,9 @@ func purgeStalePosterFiles(dir string, cacheDays int) (int, error) {
 			continue
 		}
 		imageID := strings.TrimSuffix(name, filepath.Ext(name))
+		if isOverrideImageID(imageID) {
+			continue
+		}
 		lastTouch := indexLastRequestForImage(imageID)
 		if lastTouch.IsZero() {
 			lastTouch = info.ModTime()
