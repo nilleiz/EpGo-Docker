@@ -15,12 +15,20 @@ func (c *cache) resolveSDImageForProgram(programID string) (Data, bool) {
 
 	desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
 
-	// allowed categories only
+	// allowed categories only and skip blocked IDs
 	filtered := make([]Data, 0, len(m.Data))
 	for _, d := range m.Data {
-		if _, allowed := allowedCategoryRank(d.Category); allowed {
-			filtered = append(filtered, d)
+		imageID := sdImageIDFromURI(d.URI)
+		if imageID == "" {
+			continue
 		}
+		if _, allowed := allowedCategoryRank(d.Category); !allowed {
+			continue
+		}
+		if isImageBlocked(imageID) {
+			continue
+		}
+		filtered = append(filtered, d)
 	}
 	if len(filtered) == 0 {
 		return Data{}, false
