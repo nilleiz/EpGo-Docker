@@ -160,13 +160,13 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		// -------------------------
 		imageURL := ""
 
-		_, hasOverride := overrideImageForProgram(s.ProgramID)
+		overrideImageID, hasOverride := overrideImageForProgram(s.ProgramID)
 		if hasOverride && Config.Options.Images.ProxyMode && Config.Server.Enable {
 			base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
 			if base == "" {
 				base = "http://" + Config.Server.Address + ":" + Config.Server.Port
 			}
-			imageURL = base + "/proxy/sd/" + s.ProgramID
+			imageURL = base + "/proxy/sd/" + s.ProgramID + "/" + overrideImageID
 		}
 
 		if Config.Options.Images.ProxyMode && Config.Server.Enable {
