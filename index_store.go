@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
+	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +30,12 @@ var (
 	indexImageRequests map[string]int64
 	indexLoaded        bool
 	indexPathV         string
+
+	overridesOnce     sync.Once
+	overridesPath     string
+	overridesEnabled  bool
+	overrideTitleToID map[string]string
+	overrideImageIDs  map[string]struct{}
 )
 
 func (e indexEntry) lastRequest() time.Time {
@@ -82,6 +91,101 @@ func indexInit() {
 		}
 		indexLoaded = true
 	})
+}
+
+func overridesFilePath() string {
+	return filepath.Join(filepath.Dir(indexFilePath()), "overrides.txt")
+}
+
+func overridesInit() {
+	overridesOnce.Do(func() {
+		overridesPath = overridesFilePath()
+		overrideTitleToID = map[string]string{}
+		overrideImageIDs = map[string]struct{}{}
+
+		data, err := os.ReadFile(overridesPath)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				logger.Warn("Overrides: failed to read overrides file", "path", overridesPath, "error", err)
+			}
+			return
+		}
+
+		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		lineNo := 0
+		for scanner.Scan() {
+			lineNo++
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+
+			r := csv.NewReader(strings.NewReader(line))
+			r.TrimLeadingSpace = true
+			record, err := r.Read()
+			if err != nil {
+				logger.Warn("Overrides: unable to parse line", "path", overridesPath, "line", lineNo, "error", err)
+				continue
+			}
+			if len(record) != 2 {
+				logger.Warn("Overrides: invalid record length", "path", overridesPath, "line", lineNo, "fields", len(record))
+				continue
+			}
+
+			title := strings.TrimSpace(record[0])
+			imageID := strings.TrimSpace(record[1])
+			if title == "" || imageID == "" {
+				logger.Warn("Overrides: empty title or imageID", "path", overridesPath, "line", lineNo)
+				continue
+			}
+
+			overrideTitleToID[title] = imageID
+			overrideImageIDs[imageID] = struct{}{}
+		}
+
+		if len(overrideTitleToID) > 0 {
+			overridesEnabled = true
+			logger.Info("Overrides: loaded image overrides", "count", len(overrideTitleToID), "path", overridesPath)
+		}
+	})
+}
+
+func overrideImageForTitle(title string) (string, bool) {
+	overridesInit()
+	if !overridesEnabled {
+		return "", false
+	}
+	imageID, ok := overrideTitleToID[title]
+	return imageID, ok
+}
+
+func overrideImageForProgram(programID string) (string, bool) {
+	overridesInit()
+	if !overridesEnabled {
+		return "", false
+	}
+
+	p, ok := Cache.Program[programID]
+	if !ok {
+		return "", false
+	}
+
+	for _, t := range p.Titles {
+		if imageID, ok := overrideImageForTitle(t.Title120); ok {
+			return imageID, true
+		}
+	}
+
+	return "", false
+}
+
+func isOverrideImageID(imageID string) bool {
+	overridesInit()
+	if !overridesEnabled || imageID == "" {
+		return false
+	}
+	_, ok := overrideImageIDs[imageID]
+	return ok
 }
 
 func indexSave() error {
