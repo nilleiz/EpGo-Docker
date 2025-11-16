@@ -96,17 +96,57 @@ func sdImageIDFromURI(uri string) string {
 }
 
 // lookupImageMeta finds Category/Aspect/Width/Height of an image by programID+imageID.
+// Selection rules mirror resolveSDImageForProgram, but scoped to a single imageID:
+// - Allowed categories only
+// - Enforce poster aspect when configured (so banner/box art with other aspects are ignored)
+// - Prefer show > season > episode via Tier
+// - Then prefer higher-ranked categories (e.g., Banner-L1 over Banner-L2)
+// - Ties by width
 func lookupImageMeta(programID, imageID string) (category, aspect string, width, height int, ok bool) {
 	m, ok := Cache.Metadata[programID]
 	if !ok {
 		return "", "", 0, 0, false
 	}
+
+	desired := strings.TrimSpace(Config.Options.Images.PosterAspect)
+
+	bestScore := 1 << 30
+	bestWidth := -1
+	var best Data
+
 	for _, d := range m.Data {
-		if sdImageIDFromURI(d.URI) == imageID {
-			return d.Category, d.Aspect, d.Width, d.Height, true
+		if sdImageIDFromURI(d.URI) != imageID {
+			continue
+		}
+
+		catRank, allowed := allowedCategoryRank(d.Category)
+		if !allowed {
+			continue
+		}
+
+		if desired != "" && !strings.EqualFold(desired, "all") && !strings.EqualFold(d.Aspect, desired) {
+			continue
+		}
+
+		aspectRankVal := 0
+		if desired == "" || strings.EqualFold(desired, "all") {
+			aspectRankVal = aspectRank(d.Aspect)
+		}
+
+		score := tierRank(d.Tier)*100 + catRank*10 + aspectRankVal
+
+		if score < bestScore || (score == bestScore && d.Width > bestWidth) {
+			bestScore = score
+			bestWidth = d.Width
+			best = d
 		}
 	}
-	return "", "", 0, 0, false
+
+	if best.URI == "" {
+		return "", "", 0, 0, false
+	}
+
+	return best.Category, best.Aspect, best.Width, best.Height, true
 }
 
 // sdErrorTime extracts a reference time from an SD JSON error body.
