@@ -34,6 +34,19 @@ func allowedCategoryRank(cat string) (int, bool) {
 	}
 }
 
+func tierRank(tier string) int {
+	switch strings.ToLower(tier) {
+	case "show", "series":
+		return 0
+	case "season":
+		return 1
+	case "episode":
+		return 2
+	default:
+		return 3
+	}
+}
+
 func aspectRank(aspect string) int {
 	// Used only when no explicit Poster Aspect is configured.
 	switch strings.ToLower(aspect) {
@@ -355,7 +368,7 @@ func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data,
 		filtered = tmp
 	}
 
-	// 3) Score: categoryRank*10 + aspectRank (aspectRank only used if desired is empty/all)
+	// 3) Score: tierRank*100 + categoryRank*10 + aspectRank (aspectRank only used if desired is empty/all)
 	bestScore := 1 << 30
 	bestWidth := -1
 	for _, d := range filtered {
@@ -364,7 +377,7 @@ func (c *cache) GetChosenSDImage(programID string) (imageID string, chosen Data,
 		if desired == "" || strings.EqualFold(desired, "all") {
 			aRank = aspectRank(d.Aspect)
 		}
-		score := catRank*10 + aRank
+		score := tierRank(d.Tier)*100 + catRank*10 + aRank
 		if score < bestScore || (score == bestScore && d.Width > bestWidth) {
 			bestScore = score
 			bestWidth = d.Width
@@ -408,7 +421,7 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 			filtered = tmp
 		}
 
-		// category+aspect scoring
+		// category+aspect scoring with tier preference (show > season > episode)
 		var chosen Data
 		bestScore := 1 << 30
 		bestWidth := -1
@@ -418,7 +431,7 @@ func (c *cache) GetIcon(id string) (i []Icon) {
 			if desired == "" || strings.EqualFold(desired, "all") {
 				aRank = aspectRank(d.Aspect)
 			}
-			score := catRank*10 + aRank
+			score := tierRank(d.Tier)*100 + catRank*10 + aRank
 			if score < bestScore || (score == bestScore && d.Width > bestWidth) {
 				bestScore = score
 				bestWidth = d.Width
