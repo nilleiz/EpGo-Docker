@@ -86,6 +86,13 @@ Tell EPGo exactly which Schedules Direct image ID to use for a show.
 The Simpsons,fsadkjljdföakdfsjkfladjsfdasgkljocjv8a90j9fh23uw7zh798g8asdfu
 "Law & Order: Special Victims Unit",301122dasdsadjlkgkalfdjalsödjksdksjdadsladjaskhsjkfhksdhfk
 ```
+**YAML additions (v1.3)**
+```yaml
+Options:
+  Images:
+    Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
+    Purge Stale Posters: false                     # if true, remove posters untouched for 2× Max Cache Age Days
+```
 
 Notes
 - Overrides are honored by the proxy and XMLTV output. In proxy mode the XML icon points to `/proxy/sd/{programID}` (no image ID), ensuring the override stays in effect without leaking the original ID.
@@ -108,8 +115,6 @@ Options:
     Poster Aspect: 2x3                             # 2x3 | 4x3 | 16x9 | all
     Proxy Mode: true                               # enable built-in proxy
     Proxy Base URL:                                # optional; set if clients reach EPGo externally
-    Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
-    Purge Stale Posters: false                     # if true, remove posters untouched for 2× Max Cache Age Days
 ```
 
 **Quick notes**
