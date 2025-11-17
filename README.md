@@ -22,6 +22,7 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
 - **Smart Image Cache & Proxy (v1.2+)**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
+- **NEW (v1.3) Skip refresh when XMLTV is recent**: Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
 - **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh or purge. (0 keeps images indefinitely).
 - **NEW (v1.3) Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
 
@@ -86,18 +87,23 @@ Tell EPGo exactly which Schedules Direct image ID to use for a show.
 The Simpsons,fsadkjljdföakdfsjkfladjsfdasgkljocjv8a90j9fh23uw7zh798g8asdfu
 "Law & Order: Special Victims Unit",301122dasdsadjlkgkalfdjalsödjksdksjdadsladjaskhsjkfhksdhfk
 ```
-**YAML additions (v1.3)**
-```yaml
-Options:
-  Images:
-    Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
-    Purge Stale Posters: false                     # if true, remove posters untouched for 2× Max Cache Age Days
-```
-
 Notes
 - Overrides are honored by the proxy and XMLTV output. In proxy mode the XML icon points to `/proxy/sd/{programID}` (no image ID), ensuring the override stays in effect without leaking the original ID.
 - Override images are **never purged** by the stale cache cleaner.
 - You can keep using TMDb fallback; overrides will always win when a title matches.
+
+## Skip refresh when XMLTV is recent
+
+Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
+
+**YAML additions (v1.3)**
+```yaml
+Options:
+  Skip EPG refresh if XMLTV younger than hours: 0   # reuse an existing XMLTV file newer than N hours (0 = always refresh)
+  Images:
+    Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
+    Purge Stale Posters: false                     # if true, remove posters untouched for 2× Max Cache Age Days
+```
 
 ## ✨ NEW in v1.2 — Smart Image Cache & Proxy
 
