@@ -68,6 +68,10 @@ docker compose up -d
 
 ## ✨ NEW in v1.3
 
+## Skip refresh when XMLTV is recent
+
+Set **Skip EPG refresh if XMLTV younger than hours** in your config to skip regenrating XMLTV file on startup. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
+
 ## Cache expiry controls
 
 Keep your artwork fresh without hammering the API. Version **1.3** introduces a configurable cache lifetime via `Max Cache Age Days`—set it to the number of days you want to retain pinned images before a background refresh, or leave it at `0` to keep cached art indefinitely.
@@ -91,10 +95,6 @@ Notes
 - Overrides are honored by the proxy and XMLTV output. In proxy mode the XML icon points to `/proxy/sd/{programID}` (no image ID), ensuring the override stays in effect without leaking the original ID.
 - Override images are **never purged** by the stale cache cleaner.
 - You can keep using TMDb fallback; overrides will always win when a title matches.
-
-## Skip refresh when XMLTV is recent
-
-Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
 
 **YAML additions (v1.3)**
 ```yaml
