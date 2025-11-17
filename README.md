@@ -70,7 +70,7 @@ docker compose up -d
 
 ## Skip refresh when XMLTV is recent
 
-Set **Skip EPG refresh if XMLTV younger than hours** in your config to skip regenrating XMLTV file on startup. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
+Set **Skip EPG refresh if XMLTV younger than hours** in your config to skip refreshing EPG on startup. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
 
 ## Cache expiry controls
 
