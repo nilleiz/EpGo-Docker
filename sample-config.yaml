@@ -5,6 +5,8 @@ Files:
     Cache: config_cache.json
     XMLTV: config.xml
     The MovieDB cache file: config_tmdb_cache.json
+    # Poster overrides: create overrides.txt next to the cache/index files with "Title,ImageID" lines.
+    # Example: The Simpsons,199655_i
 Server:
     Enable: false
     Address: localhost
