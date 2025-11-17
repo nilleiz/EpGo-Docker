@@ -21,9 +21,9 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Small Footprint**: Uses a multi-stage build to create a minimal final image.
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
-- **Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
-- **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh (0 keeps images indefinitely).
 - **Smart Image Cache & Proxy (v1.2+)**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
+- **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh (0 keeps images indefinitely).
+- **NEW (v1.3) Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
 
 ---
 
@@ -65,7 +65,7 @@ docker compose up -d
 
 ---
 
-## ✨ NEW in v1.3 — 
+## ✨ NEW in v1.3
 
 ## Cache expiry controls
 
