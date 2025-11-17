@@ -21,6 +21,7 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Small Footprint**: Uses a multi-stage build to create a minimal final image.
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
+- **Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
 - **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh (0 keeps images indefinitely).
 - **Smart Image Cache & Proxy (v1.2+)**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
 
@@ -71,6 +72,23 @@ Keep your artwork fresh without hammering the API. Version **1.3** introduces a 
 - Startup logs now confirm the configured lifetime so you can double-check your deployment.
 - When an image is refreshed because it aged out, the proxy log line includes the configured maximum.
 - Enable `Purge Stale Posters` to delete posters that haven’t been requested for **twice** the configured lifetime (e.g., 14 days when `Max Cache Age Days` is `7`).
+
+## ✨ NEW — Poster overrides
+
+Tell EPGo exactly which Schedules Direct image ID to use for a show.
+
+1. Create an `overrides.txt` file **next to your cache/index files** (e.g., beside `config_cache.json` → `config_cache.imgindex.json`).
+2. Add one CSV line per show using the Title120 value and the desired `imageID`:
+
+```
+The Simpsons,199655_i
+"Law & Order: Special Victims Unit",301122_i
+```
+
+Notes
+- Overrides are honored by the proxy and XMLTV output. In proxy mode the XML icon points to `/proxy/sd/{programID}` (no image ID), ensuring the override stays in effect without leaking the original ID.
+- Override images are **never purged** by the stale cache cleaner.
+- You can keep using TMDb fallback; overrides will always win when a title matches.
 
 ## ✨ NEW in v1.2 — Smart Image Cache & Proxy
 
