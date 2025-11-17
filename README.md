@@ -65,7 +65,9 @@ docker compose up -d
 
 ---
 
-## ✨ NEW in v1.3 — Cache expiry controls
+## ✨ NEW in v1.3 — 
+
+## Cache expiry controls
 
 Keep your artwork fresh without hammering the API. Version **1.3** introduces a configurable cache lifetime via `Max Cache Age Days`—set it to the number of days you want to retain pinned images before a background refresh, or leave it at `0` to keep cached art indefinitely.
 
@@ -73,7 +75,7 @@ Keep your artwork fresh without hammering the API. Version **1.3** introduces a 
 - When an image is refreshed because it aged out, the proxy log line includes the configured maximum.
 - Enable `Purge Stale Posters` to delete posters that haven’t been requested for **twice** the configured lifetime (e.g., 14 days when `Max Cache Age Days` is `7`).
 
-## ✨ NEW — Poster overrides
+## Poster overrides
 
 Tell EPGo exactly which Schedules Direct image ID to use for a show.
 
