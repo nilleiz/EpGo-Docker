@@ -88,8 +88,8 @@ Tell EPGo exactly which Schedules Direct image ID to use for a show.
 2. Add one CSV line per show using the Title120 value and the desired `imageID`:
 
 ```
-The Simpsons,fsadkjljdföakdfsjkfladjsfdasgkljocjv8a90j9fh23uw7zh798g8asdfu
-"Law & Order: Special Victims Unit",301122dasdsadjlkgkalfdjalsödjksdksjdadsladjaskhsjkfhksdhfk
+"The Simpsons","fsadkjljdföakdfsjkfladjsfdasgkljocjv8a90j9fh23uw7zh798g8asdfu"
+"Law & Order: Special Victims Unit","301122dasdsadjlkgkalfdjalsödjksdksjdadsladjaskhsjkfhksdhfk"
 ```
 Notes
 - Overrides are honored by the proxy and XMLTV output. In proxy mode the XML icon points to `/proxy/sd/{programID}` (no image ID), ensuring the override stays in effect without leaking the original ID.
