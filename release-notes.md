@@ -5,6 +5,7 @@
 - Override poster links in XML now use program-only proxy URLs (no image IDs), keeping the override intact without exposing specific IDs.
 - Override images are immune to stale-cache purges, ensuring hand-picked posters stay available even when automatic cleanup is enabled.
 - Cached-artwork lifetime controls introduced in 1.3 let you refresh or purge images based on `Max Cache Age Days` and `Purge Stale Posters` settings.
+- New **skip refresh window** lets you bypass Schedules Direct downloads when your XMLTV file is newer than a configurable hour threshold.
 
 ## Using poster overrides
 1. Create `overrides.txt` next to `config_cache.json` (the same folder that holds `config_cache.imgindex.json`).
@@ -16,3 +17,6 @@
 ## Upgrade notes
 - No configuration keys are required for overrides; the feature activates when the file is present and readable.
 - Keep `Proxy Mode` enabled to take advantage of program-only URLs for overrides and to benefit from cache-refresh logging added in 1.3.
+
+## Skip refresh when XMLTV is recent
+- Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.

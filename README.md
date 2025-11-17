@@ -184,7 +184,7 @@ Server:
 Options:
   Live and New icons: false
   Schedule Days: 1
-  Skip EPG refresh if XMLTV younger than hours: 0   # skip SD refresh when recent XML exists (0 = always refresh)
+  Skip EPG refresh if XMLTV younger than hours: 0   # reuse an existing XMLTV file newer than N hours (0 = always refresh)
   Subtitle into Description: false
   Insert credits tag into XML file: false
 
@@ -323,7 +323,7 @@ Server:
 Options:
   Live and New icons: false
   Schedule Days: 1
-  Skip EPG refresh if XMLTV younger than hours: 0
+  Skip EPG refresh if XMLTV younger than hours: 0   # reuse an existing XMLTV file newer than N hours (0 = always refresh)
   Subtitle into Description: false
   Insert credits tag into XML file: false
 
@@ -368,6 +368,10 @@ Port: "80"
 ```
 
 ### Options
+
+#### Skip refresh when XMLTV is recent
+
+Set **Skip EPG refresh if XMLTV younger than hours** to a value greater than zero to short-circuit the Schedules Direct download when a locally cached XMLTV file is still fresh. On each run, EPGo checks the modification time of `Files.XMLTV` and skips the refresh if the file is newer than the threshold you set. Leave it at `0` to always fetch new guide data.
 
 #### Subtitle into Description
 
