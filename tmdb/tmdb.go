@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,11 @@ const (
 	defaultPosterSize = "w500" // sharper default for Plex posters
 	httpTimeout       = 8 * time.Second
 	userAgent         = "EpGo-Docker (+https://github.com/nilleiz/EpGo-Docker)"
+)
+
+var (
+	// fetchLogOnce ensures we only log the long-running TMDb fetch notice once.
+	fetchLogOnce sync.Once
 )
 
 // posterURL builds a full TMDb image URL from a path and size.
@@ -89,6 +95,9 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 	} else if cachedPath != "" {
 		return posterURL(cachedPath, ""), nil // default w500
 	}
+	fetchLogOnce.Do(func() {
+		logger.Info("TMDb: fetching posters; this can take a while while the cache is primed")
+	})
 
 	// 4) HTTP client and request scaffold
 	client := &http.Client{Timeout: httpTimeout}
