@@ -1,3 +1,15 @@
+# Release Notes — 1.3.1
+
+## Highlights
+- Cached-artwork lifetime controls introduced in 1.3 let you refresh or purge images based on `Max Cache Age Days` and `Purge Stale Posters` settings.
+- Cached posters within the configured `Max Cache Age Days` window are served directly from disk without contacting Schedules Direct, reducing login churn when artwork is still fresh.
+- A skip refresh window lets you bypass Schedules Direct downloads when your XMLTV file is newer than a configurable hour threshold.
+
+## Bugfixes
+- Poster overrides now match titles case-insensitively and fall back to schedule titles when programme metadata is missing, so pinned art still resolves during upstream outages.
+- The proxy loads cached EPG data at startup and, during Schedules Direct pauses, serves already-downloaded resolved images and updates the programme→image index without contacting the API.
+- Schedules Direct tokens are fetched only when a download is required; cached posters that are still within the `Max Cache Age Days` window are delivered straight from disk to avoid unnecessary requests.
+
 # Release Notes — 1.3
 
 ## Highlights
