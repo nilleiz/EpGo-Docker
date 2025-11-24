@@ -173,6 +173,11 @@ func sdErrorTime(buf []byte) time.Time {
 
 // StartServer starts a local HTTP server: static files + SD image proxy (pinned + legacy).
 func StartServer(dir string, port string) {
+	// Ensure cached programme metadata is available even if the last EPG refresh failed
+	if err := Cache.Open(); err != nil {
+		logger.Warn("Proxy: unable to open cache; override resolution may be limited", "error", err)
+	}
+
 	// Load ProgramID → imageID index
 	indexInit()
 
@@ -491,6 +496,29 @@ func StartServer(dir string, port string) {
 				return
 			}
 			logger.Info("Proxy: using cached image id (no new metadata)", "programID", programID, "imageID", imageID)
+		}
+
+		// During a global pause, still serve from cache if the resolved image is already on disk
+		// even when the programme→image index lacks an entry.
+		if blockGlobal && imageID != "" {
+			filePath := filepath.Join(folderImage, imageID+".jpg")
+			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+				lastTouch := indexLastRequestForImage(imageID)
+				if lastTouch.IsZero() {
+					lastTouch = fi.ModTime()
+				}
+				if maxAge > 0 && now.Sub(lastTouch) > maxAge {
+					logger.Info("Proxy: serve expired cache during global pause (resolved)",
+						"programID", programID, "imageID", imageID, "path", filePath,
+						"max_cache_days", Config.Options.Images.MaxCacheAgeDays)
+				} else {
+					logger.Info("Proxy: serve from cache during global pause (resolved)",
+						"programID", programID, "imageID", imageID, "path", filePath)
+				}
+				_ = indexSet(programID, imageID)
+				serveFileCached(w, r, filePath)
+				return
+			}
 		}
 
 		if blockGlobal {
