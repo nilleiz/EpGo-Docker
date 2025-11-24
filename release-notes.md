@@ -17,6 +17,7 @@
 - Override poster links in XML now use program-only proxy URLs (no image IDs), keeping the override intact without exposing specific IDs.
 - Override images are immune to stale-cache purges, ensuring hand-picked posters stay available even when automatic cleanup is enabled.
 - Cached-artwork lifetime controls introduced in 1.3 let you refresh or purge images based on `Max Cache Age Days` and `Purge Stale Posters` settings.
+- Cached posters within the configured `Max Cache Age Days` window are served directly from disk without contacting Schedules Direct, reducing login churn when artwork is still fresh.
 - New **skip refresh window** lets you bypass Schedules Direct downloads when your XMLTV file is newer than a configurable hour threshold.
 
 ## Using poster overrides
