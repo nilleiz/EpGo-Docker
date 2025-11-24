@@ -126,15 +126,16 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		if len(channel.BroadcastLanguage) != 0 {
 			lang = channel.BroadcastLanguage[0]
 		}
-		pro.Title = Cache.GetTitle(s.ProgramID, lang)
+                pro.Title = Cache.GetTitle(s.ProgramID, lang)
+                baseTitle := pro.Title[0].Value
 
-		// New and Live guide mini-icons
-		if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
-			pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
-		}
-		if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
-			pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
-		}
+                // New and Live guide mini-icons
+                if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
+                        pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
+                }
+                if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
+                        pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
+                }
 
 		// Sub Title
 		pro.SubTitle = Cache.GetSubTitle(s.ProgramID, pro.SubTitle.Value)
@@ -161,9 +162,9 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		imageURL := ""
 		pinnedImageID := ""
 
-		if overrideID, ok := overrideImageForProgramOrTitle(s.ProgramID, pro.Title[0].Value); ok {
-			pinnedImageID = overrideID
-		}
+                if overrideID, ok := overrideImageForProgramOrTitle(s.ProgramID, baseTitle); ok {
+                        pinnedImageID = overrideID
+                }
 		proxyURL := func() string {
 			base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
 			if base == "" {

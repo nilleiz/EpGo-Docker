@@ -139,7 +139,9 @@ func overridesInit() {
 				continue
 			}
 
-			overrideTitleToID[title] = imageID
+			normTitle := strings.ToLower(title)
+
+			overrideTitleToID[normTitle] = imageID
 			overrideImageIDs[imageID] = struct{}{}
 		}
 
@@ -155,7 +157,8 @@ func overrideImageForTitle(title string) (string, bool) {
 	if !overridesEnabled {
 		return "", false
 	}
-	imageID, ok := overrideTitleToID[title]
+	normTitle := strings.ToLower(strings.TrimSpace(title))
+	imageID, ok := overrideTitleToID[normTitle]
 	return imageID, ok
 }
 
