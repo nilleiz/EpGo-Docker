@@ -21,7 +21,10 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Small Footprint**: Uses a multi-stage build to create a minimal final image.
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
-- **NEW (v1.2) Smart Image Cache & Proxy**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
+- **Smart Image Cache & Proxy (v1.2+)**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
+- **NEW (v1.3) Skip refresh when XMLTV is recent**: Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
+- **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh or purge. (0 keeps images indefinitely).
+- **NEW (v1.3) Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
 
 ---
 
@@ -63,6 +66,45 @@ docker compose up -d
 
 ---
 
+## ✨ NEW in v1.3
+
+## Skip refresh when XMLTV is recent
+
+Set **Skip EPG refresh if XMLTV younger than hours** in your config to skip refreshing EPG on startup. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
+
+## Cache expiry controls
+
+Keep your artwork fresh without hammering the API. Version **1.3** introduces a configurable cache lifetime via `Max Cache Age Days`—set it to the number of days you want to retain pinned images before a background refresh, or leave it at `0` to keep cached art indefinitely.
+
+- Startup logs now confirm the configured lifetime so you can double-check your deployment.
+- When an image is refreshed because it aged out, the proxy log line includes the configured maximum.
+- Enable `Purge Stale Posters` to delete posters that haven’t been requested for **twice** the configured lifetime (e.g., 14 days when `Max Cache Age Days` is `7`).
+
+## Poster overrides
+
+Tell EPGo exactly which Schedules Direct image ID to use for a show.
+
+1. Create an `overrides.txt` file **next to your cache/index files** (e.g., beside `config_cache.json` → `config_cache.imgindex.json`).
+2. Add one CSV line per show using the Title120 value and the desired `imageID`:
+
+```
+"The Simpsons","fsadkjljdföakdfsjkfladjsfdasgkljocjv8a90j9fh23uw7zh798g8asdfu"
+"Law & Order: Special Victims Unit","301122dasdsadjlkgkalfdjalsödjksdksjdadsladjaskhsjkfhksdhfk"
+```
+Notes
+- Overrides are honored by the proxy and XMLTV output. In proxy mode the XML icon points to `/proxy/sd/{programID}` (no image ID), ensuring the override stays in effect without leaking the original ID.
+- Override images are **never purged** by the stale cache cleaner.
+- You can keep using TMDb fallback; overrides will always win when a title matches.
+
+**YAML additions (v1.3)**
+```yaml
+Options:
+  Skip EPG refresh if XMLTV younger than hours: 0   # reuse an existing XMLTV file newer than N hours (0 = always refresh)
+  Images:
+    Max Cache Age Days: 0                          # 0 disables expiry; otherwise refresh pinned art after N days
+    Purge Stale Posters: false                     # if true, remove posters untouched for 2× Max Cache Age Days
+```
+
 ## ✨ NEW in v1.2 — Smart Image Cache & Proxy
 
 **What it does**
@@ -70,7 +112,7 @@ docker compose up -d
 - All subsequent requests are served straight from disk (no SD round-trip).
 - Benefits: stable artwork over time, faster UIs, and fewer API requests.
 
-**YAML additions (v1.2)**
+**YAML additions (v1.2+)**
 ```yaml
 Options:
   Images:
@@ -128,7 +170,7 @@ The entrypoint ensures `/app` is owned by the unprivileged `app` user; host-side
 
 ## CONFIG
 
-> Sample reflecting **Poster Aspect**, TMDb changes, and v1.2 cache/proxy options.
+> Sample reflecting **Poster Aspect**, TMDb changes, and v1.2+ cache/proxy options (including v1.3 cache expiry).
 
 ```yaml
 Account:
@@ -148,6 +190,7 @@ Server:
 Options:
   Live and New icons: false
   Schedule Days: 1
+  Skip EPG refresh if XMLTV younger than hours: 0   # reuse an existing XMLTV file newer than N hours (0 = always refresh)
   Subtitle into Description: false
   Insert credits tag into XML file: false
 
@@ -158,6 +201,8 @@ Options:
 
     Proxy Mode: true                              # set false when using "Download Images from Schedules Direct: true"
     Proxy Base URL: ""                            # e.g., https://epgo.example.com if accessed externally
+    Max Cache Age Days: 0                         # refresh artwork after N days (0 = disabled)
+    Purge Stale Posters: false                    # remove posters untouched for 2× Max Cache Age Days
 
     The MovieDB:
       Enable: false                               # set true to enable TMDB-fallback on missing SD posters
@@ -284,6 +329,7 @@ Server:
 Options:
   Live and New icons: false
   Schedule Days: 1
+  Skip EPG refresh if XMLTV younger than hours: 0   # reuse an existing XMLTV file newer than N hours (0 = always refresh)
   Subtitle into Description: false
   Insert credits tag into XML file: false
 
@@ -328,6 +374,10 @@ Port: "80"
 ```
 
 ### Options
+
+#### Skip refresh when XMLTV is recent
+
+Set **Skip EPG refresh if XMLTV younger than hours** to a value greater than zero to short-circuit the Schedules Direct download when a locally cached XMLTV file is still fresh. On each run, EPGo checks the modification time of `Files.XMLTV` and skips the refresh if the file is newer than the threshold you set. Leave it at `0` to always fetch new guide data.
 
 #### Subtitle into Description
 

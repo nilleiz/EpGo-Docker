@@ -171,9 +171,14 @@ func (c *config) Open() (err error) {
 
 	}
 
-	if !bytes.Contains(data, []byte("Live and New icons")){
+	if !bytes.Contains(data, []byte("Live and New icons")) {
 		newOptions = true
 		Config.Options.LiveIcons = false
+	}
+
+	if !bytes.Contains(data, []byte("Skip EPG refresh")) {
+		newOptions = true
+		Config.Options.SkipRefreshHours = 0
 	}
 
 	if !bytes.Contains(data, []byte("The MovieDB cache")) {
@@ -265,6 +270,7 @@ func (c *config) InitConfig() {
 	c.Options.Schedule = 7
 	c.Options.SubtitleIntoDescription = false
 	c.Options.Credits = false
+	c.Options.SkipRefreshHours = 0
 	Config.Options.Rating.Guidelines = true
 	Config.Options.Rating.Countries = []string{"USA", "CHE", "DE"}
 	Config.Options.Rating.CountryCodeAsSystem = false

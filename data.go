@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,27 @@ func (sd *SD) Update(filename string) (err error) {
 	err = Config.Open()
 	if err != nil {
 		return
+	}
+
+	if Config.Options.SkipRefreshHours > 0 {
+		stat, statErr := os.Stat(Config.Files.XMLTV)
+		if statErr == nil {
+			maxAge := time.Duration(Config.Options.SkipRefreshHours) * time.Hour
+			age := time.Since(stat.ModTime())
+			if age < maxAge {
+				logger.Info("Skip EPG refresh; existing XMLTV file is recent",
+					"file", Config.Files.XMLTV,
+					"age_hours", age.Hours(),
+					"threshold_hours", Config.Options.SkipRefreshHours,
+				)
+				return nil
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			logger.Warn("Unable to stat XMLTV file; continuing with refresh",
+				"file", Config.Files.XMLTV,
+				"error", statErr,
+			)
+		}
 	}
 
 	// loads default functions and variables

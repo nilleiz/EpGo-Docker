@@ -3,43 +3,38 @@ Account:
   Password: YOUR_PASSWORD
 
 Files:
-  Cache: config_cache.json
-  XMLTV: config.xml
-  The MovieDB cache file: imdb_image_cache.json
-
+    Cache: config_cache.json
+    XMLTV: config.xml
+    The MovieDB cache file: config_tmdb_cache.json
+    # Poster overrides: create overrides.txt next to the cache/index files with "Title,ImageID" lines.
+    # Example: The Simpsons,199655_i
 Server:
   Enable: true                 # enable the built-in HTTP server
   Address: 0.0.0.0
   Port: "8765"
 
 Options:
-  Live and New icons: false
-  Schedule Days: 1
-  Subtitle into Description: false
-  Insert credits tag into XML file: false
-
-  Images:
-    Download Images from Schedules Direct: false  # set false to allow on-demand fetch, true will download all images on building EPG (legacy)
-    Image Path: /app/images/
-    Poster Aspect: 2x3
-
-    Proxy Mode: true                              # set false when using "Download Images from Schedules Direct: true"
-    Proxy Base URL: ""                            # e.g., https://epgo.example.com if accessed externally
-
-    The MovieDB:
-      Enable: false                               # set true to enable TMDB-fallback on missing SD posters
-      Api Key: ""                                 # the longer key from your TMDB-api page
-
-  Rating:
-    Insert rating tag into XML file: false
-    Maximum rating entries. 0 for all entries: 1
-    Preferred countries. ISO 3166-1 alpha-3 country code. Leave empty for all systems:
-      - USA
-      - COL
-    Use country code as rating system: false
-
-  Show download errors from Schedules Direct in the log: false
-
+    Schedule Days: 1
+    Skip EPG refresh if XMLTV younger than hours: 0  # set >0 to reuse a recent XMLTV instead of refreshing
+    Subtitle into Description: false
+    Insert credits tag into XML file: false
+    Images:
+        Download Images: false
+        Image Path: ""
+        Proxy Mode: false
+        Proxy Base URL: ""
+        Max Cache Age Days: 0
+        Purge Stale Posters: false
+        The MovieDB:
+            Enable: false
+            Api Key: ""
+    Rating:
+        Insert rating tag into XML file: false
+        Maximum rating entries. 0 for all entries: 1
+        Preferred countries. ISO 3166-1 alpha-3 country code. Leave empty for all systems:
+            - USA
+        Use country code as rating system: false
+    Show download errors from Schedules Direct in the log: false
 Station:
   - Name: MTV
     ID: "12345"

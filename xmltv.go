@@ -119,7 +119,7 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		dateArray := strings.Fields(t.String())
 		offset := " " + dateArray[2]
 		pro.Start = t.Format("20060102150405") + offset
-		pro.Stop = t.Add(time.Second * time.Duration(s.Duration)).Format("20060102150405") + offset
+		pro.Stop = t.Add(time.Second*time.Duration(s.Duration)).Format("20060102150405") + offset
 
 		// Title
 		lang := "en"
@@ -160,16 +160,27 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		// -------------------------
 		imageURL := ""
 
-		if Config.Options.Images.ProxyMode && Config.Server.Enable {
-			// Try SD pin
-			if imageID, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok && imageID != "" {
-				base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
-				if base == "" {
-					base = "http://" + Config.Server.Address + ":" + Config.Server.Port
-				}
-				imageURL = base + "/proxy/sd/" + s.ProgramID + "/" + imageID
+		_, hasOverride := overrideImageForProgram(s.ProgramID)
+		proxyURL := func() string {
+			base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
+			if base == "" {
+				base = "http://" + Config.Server.Address + ":" + Config.Server.Port
 			}
-			// else: leave empty to allow TMDb fallback
+			return base + "/proxy/sd/" + s.ProgramID
+		}
+
+		if hasOverride && Config.Options.Images.ProxyMode && Config.Server.Enable {
+			imageURL = proxyURL()
+		}
+
+		if Config.Options.Images.ProxyMode && Config.Server.Enable {
+			if imageURL == "" {
+				// Try SD pin
+				if _, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok {
+					imageURL = proxyURL()
+				}
+				// else: leave empty to allow TMDb fallback
+			}
 		} else {
 			// Non-proxy mode: direct SD or pre-downloaded
 			icons := Cache.GetIcon(s.ProgramID)
