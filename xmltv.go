@@ -159,8 +159,11 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		// SD (pinned) → TMDb → blank
 		// -------------------------
 		imageURL := ""
+		pinnedImageID := ""
 
-		_, hasOverride := overrideImageForProgram(s.ProgramID)
+		if overrideID, ok := overrideImageForProgramOrTitle(s.ProgramID, pro.Title[0].Value); ok {
+			pinnedImageID = overrideID
+		}
 		proxyURL := func() string {
 			base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
 			if base == "" {
@@ -169,14 +172,15 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			return base + "/proxy/sd/" + s.ProgramID
 		}
 
-		if hasOverride && Config.Options.Images.ProxyMode && Config.Server.Enable {
+		if pinnedImageID != "" && Config.Options.Images.ProxyMode && Config.Server.Enable {
 			imageURL = proxyURL()
 		}
 
 		if Config.Options.Images.ProxyMode && Config.Server.Enable {
 			if imageURL == "" {
 				// Try SD pin
-				if _, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok {
+				if chosenID, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok {
+					pinnedImageID = chosenID
 					imageURL = proxyURL()
 				}
 				// else: leave empty to allow TMDb fallback
@@ -193,6 +197,10 @@ func getProgram(channel EPGoCache) (p []Programme) {
 					imageURL = icons[0].Src
 				}
 			}
+		}
+
+		if pinnedImageID != "" {
+			_ = indexSet(s.ProgramID, pinnedImageID)
 		}
 
 		// TMDb fallback (only if nothing from SD)
