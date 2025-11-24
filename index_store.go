@@ -139,7 +139,9 @@ func overridesInit() {
 				continue
 			}
 
-			overrideTitleToID[title] = imageID
+			normTitle := strings.ToLower(title)
+
+			overrideTitleToID[normTitle] = imageID
 			overrideImageIDs[imageID] = struct{}{}
 		}
 
@@ -155,7 +157,8 @@ func overrideImageForTitle(title string) (string, bool) {
 	if !overridesEnabled {
 		return "", false
 	}
-	imageID, ok := overrideTitleToID[title]
+	normTitle := strings.ToLower(strings.TrimSpace(title))
+	imageID, ok := overrideTitleToID[normTitle]
 	return imageID, ok
 }
 
@@ -177,6 +180,17 @@ func overrideImageForProgram(programID string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// overrideImageForProgramOrTitle attempts to resolve an override for a program.
+// It first checks the cached program metadata (for Title120 matches) and, if that
+// fails, it will also attempt to match the provided fallbackTitle (e.g. from a
+// schedule entry) so overrides still work when program metadata is missing.
+func overrideImageForProgramOrTitle(programID, fallbackTitle string) (string, bool) {
+	if id, ok := overrideImageForProgram(programID); ok {
+		return id, true
+	}
+	return overrideImageForTitle(fallbackTitle)
 }
 
 func isOverrideImageID(imageID string) bool {

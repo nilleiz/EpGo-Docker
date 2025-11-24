@@ -1,4 +1,4 @@
-# Release Notes — 1.3
+# Release Notes — 1.3.1
 
 ## Highlights
 - Added **poster override** support: map Title120 values to preferred Schedules Direct image IDs via an `overrides.txt` file stored alongside the cache/index files. Overrides apply to the proxy and XML output so you can pin the art you want.
