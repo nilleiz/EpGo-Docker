@@ -416,10 +416,6 @@ func StartServer(dir string, port string) {
 						indexImageExpired = true
 					}
 					if !expired {
-						// ensure metadata loaded and log full details
-						if _, _, _, _, ok := lookupImageMeta(programID, imgID); !ok && !blockGlobal {
-							_ = ensureProgramMetadata(programID)
-						}
 						if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imgID); ok {
 							logger.Info("Proxy: serve from cache (index hit)",
 								"programID", programID, "imageID", imgID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", indexImagePath)
@@ -528,20 +524,8 @@ func StartServer(dir string, port string) {
 			return
 		}
 
-		// Token
-		token, err := getSDToken()
-		if err != nil {
-			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
-			http.Error(w, "token error", http.StatusBadGateway)
-			return
-		}
-
-		// IMPORTANT: do NOT redeclare imageID; reuse existing variable to avoid shadowing
-		var imageURL string
-		imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
-		filePath := filepath.Join(folderImage, imageID+".jpg")
-
 		// 3) Serve from disk if present (and update index) provided it hasn't expired
+		filePath := filepath.Join(folderImage, imageID+".jpg")
 		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
 			lastTouch := indexLastRequestForImage(imageID)
 			if lastTouch.IsZero() {
@@ -568,9 +552,6 @@ func StartServer(dir string, port string) {
 					expired = true
 				}
 				if !expired {
-					if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok && !blockGlobal {
-						_ = ensureProgramMetadata(programID)
-					}
 					if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
 						logger.Info("Proxy: serve from cache (by imageID)",
 							"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
@@ -587,6 +568,18 @@ func StartServer(dir string, port string) {
 				}
 			}
 		}
+
+		// Token (only when a download is required)
+		token, err := getSDToken()
+		if err != nil {
+			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
+			http.Error(w, "token error", http.StatusBadGateway)
+			return
+		}
+
+		// IMPORTANT: do NOT redeclare imageID; reuse existing variable to avoid shadowing
+		var imageURL string
+		imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
 
 		// 4) Download (retry once on 401)
 		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
