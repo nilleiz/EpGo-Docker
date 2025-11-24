@@ -1,6 +1,7 @@
 Account:
-    Username: sample
-    Password: sample
+  Username: YOUR_USERNAME
+  Password: YOUR_PASSWORD
+
 Files:
     Cache: config_cache.json
     XMLTV: config.xml
@@ -8,9 +9,10 @@ Files:
     # Poster overrides: create overrides.txt next to the cache/index files with "Title,ImageID" lines.
     # Example: The Simpsons,199655_i
 Server:
-    Enable: false
-    Address: localhost
-    Port: "80"
+  Enable: true                 # enable the built-in HTTP server
+  Address: 0.0.0.0
+  Port: "8765"
+
 Options:
     Schedule Days: 1
     Skip EPG refresh if XMLTV younger than hours: 0  # set >0 to reuse a recent XMLTV instead of refreshing
@@ -34,6 +36,6 @@ Options:
         Use country code as rating system: false
     Show download errors from Schedules Direct in the log: false
 Station:
-    - Name: WGBO-DT
-      ID: "42635"
-      Lineup: USA-IL67050-X
+  - Name: MTV
+    ID: "12345"
+    Lineup: SAMPLE
