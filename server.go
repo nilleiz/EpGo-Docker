@@ -173,6 +173,11 @@ func sdErrorTime(buf []byte) time.Time {
 
 // StartServer starts a local HTTP server: static files + SD image proxy (pinned + legacy).
 func StartServer(dir string, port string) {
+	// Ensure cached programme metadata is available even if the last EPG refresh failed
+	if err := Cache.Open(); err != nil {
+		logger.Warn("Proxy: unable to open cache; override resolution may be limited", "error", err)
+	}
+
 	// Load ProgramID → imageID index
 	indexInit()
 
