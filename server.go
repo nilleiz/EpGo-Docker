@@ -498,6 +498,29 @@ func StartServer(dir string, port string) {
 			logger.Info("Proxy: using cached image id (no new metadata)", "programID", programID, "imageID", imageID)
 		}
 
+		// During a global pause, still serve from cache if the resolved image is already on disk
+		// even when the programme→image index lacks an entry.
+		if blockGlobal && imageID != "" {
+			filePath := filepath.Join(folderImage, imageID+".jpg")
+			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+				lastTouch := indexLastRequestForImage(imageID)
+				if lastTouch.IsZero() {
+					lastTouch = fi.ModTime()
+				}
+				if maxAge > 0 && now.Sub(lastTouch) > maxAge {
+					logger.Info("Proxy: serve expired cache during global pause (resolved)",
+						"programID", programID, "imageID", imageID, "path", filePath,
+						"max_cache_days", Config.Options.Images.MaxCacheAgeDays)
+				} else {
+					logger.Info("Proxy: serve from cache during global pause (resolved)",
+						"programID", programID, "imageID", imageID, "path", filePath)
+				}
+				_ = indexSet(programID, imageID)
+				serveFileCached(w, r, filePath)
+				return
+			}
+		}
+
 		if blockGlobal {
 			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", blockRemain.Seconds()))
 			http.Error(w, "image downloads paused due to upstream limits", http.StatusTooManyRequests)
