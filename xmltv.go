@@ -126,15 +126,16 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		if len(channel.BroadcastLanguage) != 0 {
 			lang = channel.BroadcastLanguage[0]
 		}
-		pro.Title = Cache.GetTitle(s.ProgramID, lang)
+                pro.Title = Cache.GetTitle(s.ProgramID, lang)
+                baseTitle := pro.Title[0].Value
 
-		// New and Live guide mini-icons
-		if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
-			pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
-		}
-		if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
-			pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
-		}
+                // New and Live guide mini-icons
+                if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
+                        pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
+                }
+                if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
+                        pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
+                }
 
 		// Sub Title
 		pro.SubTitle = Cache.GetSubTitle(s.ProgramID, pro.SubTitle.Value)
@@ -159,8 +160,11 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		// SD (pinned) → TMDb → blank
 		// -------------------------
 		imageURL := ""
+		pinnedImageID := ""
 
-		_, hasOverride := overrideImageForProgram(s.ProgramID)
+                if overrideID, ok := overrideImageForProgramOrTitle(s.ProgramID, baseTitle); ok {
+                        pinnedImageID = overrideID
+                }
 		proxyURL := func() string {
 			base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
 			if base == "" {
@@ -169,14 +173,15 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			return base + "/proxy/sd/" + s.ProgramID
 		}
 
-		if hasOverride && Config.Options.Images.ProxyMode && Config.Server.Enable {
+		if pinnedImageID != "" && Config.Options.Images.ProxyMode && Config.Server.Enable {
 			imageURL = proxyURL()
 		}
 
 		if Config.Options.Images.ProxyMode && Config.Server.Enable {
 			if imageURL == "" {
 				// Try SD pin
-				if _, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok {
+				if chosenID, _, ok := Cache.GetChosenSDImage(s.ProgramID); ok {
+					pinnedImageID = chosenID
 					imageURL = proxyURL()
 				}
 				// else: leave empty to allow TMDb fallback
@@ -193,6 +198,10 @@ func getProgram(channel EPGoCache) (p []Programme) {
 					imageURL = icons[0].Src
 				}
 			}
+		}
+
+		if pinnedImageID != "" {
+			_ = indexSet(s.ProgramID, pinnedImageID)
 		}
 
 		// TMDb fallback (only if nothing from SD)
