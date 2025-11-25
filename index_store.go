@@ -52,7 +52,9 @@ func preindexSDPosters() {
 	indexInit()
 
 	mapped := 0
+	unchanged := 0
 	skipped := 0
+	updates := make(map[string]string)
 
 	for programID := range Cache.Metadata {
 		imageID := ""
@@ -67,15 +69,20 @@ func preindexSDPosters() {
 			continue
 		}
 
-		if err := indexSet(programID, imageID); err != nil {
-			logger.Warn("Preindex: failed to persist poster mapping", "programID", programID, "imageID", imageID, "error", err)
+		if existing, ok := indexGetEntry(programID); ok && existing.ImageID == imageID {
+			unchanged++
 			continue
 		}
 
+		updates[programID] = imageID
 		mapped++
 	}
 
-	logger.Info("Preindex: SD poster index built", "mapped", mapped, "skipped", skipped, "duration", time.Since(start))
+	if err := indexApplyBatch(updates); err != nil {
+		logger.Warn("Preindex: failed to persist poster mappings", "error", err)
+	} else {
+		logger.Info("Preindex: SD poster index built", "mapped", mapped, "skipped", skipped, "unchanged", unchanged, "duration", time.Since(start))
+	}
 }
 
 func indexFilePath() string {
@@ -291,6 +298,46 @@ func indexSet(programID, imageID string) error {
 
 	if len(recalc) > 0 {
 		indexRecalculateImageRequests(recalc)
+	}
+
+	return indexSave()
+}
+
+// indexApplyBatch applies many ProgramID → imageID mappings and persists once.
+// LastRequestUnix is set to now for all updated entries. Unchanged entries are ignored.
+func indexApplyBatch(entries map[string]string) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if !indexLoaded {
+		indexInit()
+	}
+	nowUnix := time.Now().Unix()
+	recalcSet := make(map[string]struct{})
+
+	indexMu.Lock()
+	if indexImageRequests == nil {
+		indexImageRequests = map[string]int64{}
+	}
+	for programID, imageID := range entries {
+		if imageID == "" {
+			continue
+		}
+		old := indexMap[programID]
+		indexMap[programID] = indexEntry{ImageID: imageID, LastRequestUnix: nowUnix}
+		indexImageRequests[imageID] = nowUnix
+		if old.ImageID != "" && old.ImageID != imageID {
+			recalcSet[old.ImageID] = struct{}{}
+		}
+	}
+	indexMu.Unlock()
+
+	if len(recalcSet) > 0 {
+		ids := make([]string, 0, len(recalcSet))
+		for id := range recalcSet {
+			ids = append(ids, id)
+		}
+		indexRecalculateImageRequests(ids)
 	}
 
 	return indexSave()
