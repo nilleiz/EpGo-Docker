@@ -209,7 +209,7 @@ func getProgram(channel EPGoCache) (p []Programme) {
 				Config.Files.TmdbCacheFile,
 			)
 			if err != nil {
-				logger.Error("could not connect to tmdb. check your api key", "error", err)
+				logger.Error("tmdb lookup failed", "error", err)
 			}
 		}
 
