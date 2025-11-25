@@ -14,7 +14,7 @@ This image is built from source, ensuring compatibility with any Docker host arc
 
 ## ✅ Features
 
-- **Multi-Arch**: Built from source to run on any Docker host (amd64, arm64, etc.).
+- **Multi-Arch**: Built from source to run on any Docker host (amd64, arm64).
 - **Flexible Execution**: Run `epgo` on a cron schedule or as a single, one-off task.
 - **Secure**: Runs the application as a non-root `app` user.
 - **Auto-Initialization**: Creates a default `config.yaml` on the first run.
