@@ -126,16 +126,16 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		if len(channel.BroadcastLanguage) != 0 {
 			lang = channel.BroadcastLanguage[0]
 		}
-                pro.Title = Cache.GetTitle(s.ProgramID, lang)
-                baseTitle := pro.Title[0].Value
+		pro.Title = Cache.GetTitle(s.ProgramID, lang)
+		baseTitle := pro.Title[0].Value
 
-                // New and Live guide mini-icons
-                if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
-                        pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
-                }
-                if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
-                        pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
-                }
+		// New and Live guide mini-icons
+		if s.LiveTapeDelay == "Live" && Config.Options.LiveIcons {
+			pro.Title[0].Value = pro.Title[0].Value + " ᴸᶦᵛᵉ"
+		}
+		if s.New && s.LiveTapeDelay != "Live" && Config.Options.LiveIcons {
+			pro.Title[0].Value = pro.Title[0].Value + " ᴺᵉʷ"
+		}
 
 		// Sub Title
 		pro.SubTitle = Cache.GetSubTitle(s.ProgramID, pro.SubTitle.Value)
@@ -162,9 +162,9 @@ func getProgram(channel EPGoCache) (p []Programme) {
 		imageURL := ""
 		pinnedImageID := ""
 
-                if overrideID, ok := overrideImageForProgramOrTitle(s.ProgramID, baseTitle); ok {
-                        pinnedImageID = overrideID
-                }
+		if overrideID, ok := overrideImageForProgramOrTitle(s.ProgramID, baseTitle); ok {
+			pinnedImageID = overrideID
+		}
 		proxyURL := func() string {
 			base := strings.TrimRight(Config.Options.Images.ProxyBaseURL, "/")
 			if base == "" {
@@ -200,12 +200,8 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			}
 		}
 
-		if pinnedImageID != "" {
-			_ = indexSet(s.ProgramID, pinnedImageID)
-		}
-
-		// TMDb fallback (only if nothing from SD)
-		if imageURL == "" && Config.Options.Images.Tmdb.Enable {
+                // TMDb fallback (only if nothing from SD)
+                if imageURL == "" && Config.Options.Images.Tmdb.Enable {
 			seas := ""
 			if len(pro.EpisodeNums) > 0 && len(pro.EpisodeNums[0].Value) >= 2 {
 				seas = pro.EpisodeNums[0].Value[0:2]

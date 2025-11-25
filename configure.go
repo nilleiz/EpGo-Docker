@@ -205,6 +205,12 @@ func (c *config) Open() (err error) {
 		newOptions = true
 		Config.Options.Images.Download = false
 		Config.Options.Images.Path = ""
+		Config.Options.Images.PreindexSDPosters = true
+	}
+
+	if !bytes.Contains(data, []byte("Preindex SD Posters")) {
+		newOptions = true
+		Config.Options.Images.PreindexSDPosters = true
 	}
 
 	if !bytes.Contains(data, []byte("Server:")) {
@@ -279,6 +285,7 @@ func (c *config) InitConfig() {
 	// Options images
 	c.Options.Images.Download = false
 	c.Options.Images.Path = ""
+	c.Options.Images.PreindexSDPosters = true
 	c.Options.Images.Tmdb.Enable = false
 	c.Options.Images.Tmdb.ApiKey = ""
 

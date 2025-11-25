@@ -24,6 +24,10 @@ const (
 var (
 	// fetchLogOnce ensures we only log the long-running TMDb fetch notice once.
 	fetchLogOnce sync.Once
+
+	cacheMu       sync.RWMutex
+	cacheEntries  map[string]string
+	cacheFilePath string
 )
 
 // posterURL builds a full TMDb image URL from a path and size.
@@ -90,7 +94,7 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 	}
 
 	// 3) Cache hit?
-	if cachedPath, err := getImageURL(origTerm+"-"+mediaType, imageCacheFile); err != nil {
+	if cachedPath, err := getCachedImage(origTerm+"-"+mediaType, imageCacheFile); err != nil {
 		return "", fmt.Errorf("tmdb: error checking cache: %w", err)
 	} else if cachedPath != "" {
 		return posterURL(cachedPath, ""), nil // default w500
@@ -200,68 +204,80 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 	return posterURL(posterPath, ""), nil
 }
 
-func getImageURL(name, cacheFile string) (string, error) {
-	f, err := os.Open(cacheFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", fmt.Errorf("error opening image cache file: %w", err)
-	}
-	defer f.Close()
-
-	var cache []map[string]string
-	dec := json.NewDecoder(f)
-	if err := dec.Decode(&cache); err != nil {
-		if err != io.EOF {
-			return "", fmt.Errorf("error decoding JSON: %w", err)
-		}
+func ensureCache(cacheFile string) error {
+	cacheMu.RLock()
+	ready := cacheEntries != nil && cacheFilePath == cacheFile
+	cacheMu.RUnlock()
+	if ready {
+		return nil
 	}
 
-	for _, entry := range cache {
-		if entry["name"] == name {
-			return entry["url"], nil
+	entries := map[string]string{}
+	if f, err := os.Open(cacheFile); err == nil {
+		defer f.Close()
+		var cache []map[string]string
+		dec := json.NewDecoder(f)
+		if err := dec.Decode(&cache); err != nil && err != io.EOF {
+			return fmt.Errorf("error decoding JSON: %w", err)
 		}
+		for _, entry := range cache {
+			name := entry["name"]
+			url := entry["url"]
+			if name != "" && url != "" {
+				entries[name] = url
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("error opening image cache file: %w", err)
 	}
-	return "", nil
+
+	cacheMu.Lock()
+	cacheEntries = entries
+	cacheFilePath = cacheFile
+	cacheMu.Unlock()
+	return nil
+}
+
+func getCachedImage(name, cacheFile string) (string, error) {
+	if err := ensureCache(cacheFile); err != nil {
+		return "", err
+	}
+	cacheMu.RLock()
+	defer cacheMu.RUnlock()
+	return cacheEntries[name], nil
 }
 
 func addImageToCache(name, url, cacheFile string) error {
-	entry := map[string]string{
-		"name": name,
-		"url":  url,
+	if name == "" || url == "" {
+		return nil
+	}
+	if err := ensureCache(cacheFile); err != nil {
+		return err
 	}
 
-	f, err := os.OpenFile(cacheFile, os.O_RDWR|os.O_CREATE, 0644)
+	cacheMu.Lock()
+	if cacheEntries == nil {
+		cacheEntries = map[string]string{}
+	}
+	if existing, ok := cacheEntries[name]; ok && existing == url {
+		cacheMu.Unlock()
+		return nil
+	}
+	cacheEntries[name] = url
+	entries := make([]map[string]string, 0, len(cacheEntries))
+	for n, u := range cacheEntries {
+		entries = append(entries, map[string]string{"name": n, "url": u})
+	}
+	cacheMu.Unlock()
+
+	f, err := os.OpenFile(cacheFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("error opening image cache file: %w", err)
 	}
 	defer f.Close()
 
-	var cache []map[string]string
-	dec := json.NewDecoder(f)
-	if err := dec.Decode(&cache); err != nil && err != io.EOF {
-		return fmt.Errorf("error decoding JSON: %w", err)
-	}
-
-	// Avoid duplicates
-	for _, e := range cache {
-		if e["name"] == name && e["url"] == url {
-			return nil
-		}
-	}
-	cache = append(cache, entry)
-
-	// Seek to start & truncate to avoid trailing bytes from previous content
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("error seeking to beginning of file: %w", err)
-	}
-	if err := f.Truncate(0); err != nil {
-		return fmt.Errorf("error truncating file: %w", err)
-	}
-
 	enc := json.NewEncoder(f)
-	if err := enc.Encode(cache); err != nil {
+	if err := enc.Encode(entries); err != nil {
 		return fmt.Errorf("error encoding JSON: %w", err)
 	}
 	return nil

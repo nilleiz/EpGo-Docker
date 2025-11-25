@@ -30,6 +30,9 @@ var (
 	indexImageRequests map[string]int64
 	indexLoaded        bool
 	indexPathV         string
+	indexSaveTimer     *time.Timer
+	indexSaveMu        sync.Mutex
+	indexLastPersist   time.Time
 
 	overridesOnce     sync.Once
 	overridesPath     string
@@ -43,6 +46,51 @@ func (e indexEntry) lastRequest() time.Time {
 		return time.Time{}
 	}
 	return time.Unix(e.LastRequestUnix, 0).UTC()
+}
+
+// preindexSDPosters iterates over cached metadata and builds the ProgramID → imageID index.
+// This can be expensive on large caches, so it can be disabled via configuration.
+func preindexSDPosters() {
+	start := time.Now()
+	indexInit()
+
+	mapped := 0
+	unchanged := 0
+	skipped := 0
+	updates := make(map[string]string)
+
+	for programID := range Cache.Metadata {
+		imageID := ""
+		if overrideID, ok := overrideImageForProgram(programID); ok {
+			imageID = overrideID
+		} else if chosenID, _, ok := Cache.GetChosenSDImage(programID); ok {
+			imageID = chosenID
+		}
+
+		if !isSDImageID(imageID) {
+			skipped++
+			continue
+		}
+
+		if imageID == "" {
+			skipped++
+			continue
+		}
+
+		if existing, ok := indexGetEntry(programID); ok && existing.ImageID == imageID {
+			unchanged++
+			continue
+		}
+
+		updates[programID] = imageID
+		mapped++
+	}
+
+	if err := indexApplyBatch(updates); err != nil {
+		logger.Warn("Preindex: failed to persist poster mappings", "error", err)
+	} else {
+		logger.Info("Preindex: SD poster index built", "mapped", mapped, "skipped", skipped, "unchanged", unchanged, "duration", time.Since(start))
+	}
 }
 
 func indexFilePath() string {
@@ -202,6 +250,26 @@ func isOverrideImageID(imageID string) bool {
 	return ok
 }
 
+// isSDImageID returns true if the identifier looks like an SD-hosted asset (no URL/path bits).
+func isSDImageID(imageID string) bool {
+	if imageID == "" {
+		return false
+	}
+
+	low := strings.ToLower(imageID)
+	if strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") {
+		return false
+	}
+	if strings.Contains(low, "tmdb") {
+		return false
+	}
+	if strings.ContainsAny(imageID, "/\\") {
+		return false
+	}
+
+	return true
+}
+
 func indexSave() error {
 	if !indexLoaded {
 		indexInit()
@@ -213,6 +281,32 @@ func indexSave() error {
 		return err
 	}
 	return os.WriteFile(indexPathV, blob, 0644)
+}
+
+// indexSaveDebounced persists the index after a short delay to avoid hammering the
+// filesystem when many poster lookups happen in quick succession.
+func indexSaveDebounced() {
+	indexSaveMu.Lock()
+	defer indexSaveMu.Unlock()
+	if indexSaveTimer != nil {
+		return
+	}
+
+	const minInterval = time.Second
+	delay := minInterval - time.Since(indexLastPersist)
+	if delay < 0 {
+		delay = 0
+	}
+
+	indexSaveTimer = time.AfterFunc(delay, func() {
+		if err := indexSave(); err != nil {
+			logger.Warn("Index: failed to persist poster mapping", "error", err)
+		}
+		indexSaveMu.Lock()
+		indexLastPersist = time.Now()
+		indexSaveTimer = nil
+		indexSaveMu.Unlock()
+	})
 }
 
 func indexGet(programID string) (string, bool) {
@@ -237,7 +331,7 @@ func indexSet(programID, imageID string) error {
 	if !indexLoaded {
 		indexInit()
 	}
-	if imageID == "" {
+	if !isSDImageID(imageID) {
 		return nil
 	}
 	nowUnix := time.Now().Unix()
@@ -258,6 +352,47 @@ func indexSet(programID, imageID string) error {
 
 	if len(recalc) > 0 {
 		indexRecalculateImageRequests(recalc)
+	}
+
+	indexSaveDebounced()
+	return nil
+}
+
+// indexApplyBatch applies many ProgramID → imageID mappings and persists once.
+// LastRequestUnix is set to now for all updated entries. Unchanged entries are ignored.
+func indexApplyBatch(entries map[string]string) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if !indexLoaded {
+		indexInit()
+	}
+	nowUnix := time.Now().Unix()
+	recalcSet := make(map[string]struct{})
+
+	indexMu.Lock()
+	if indexImageRequests == nil {
+		indexImageRequests = map[string]int64{}
+	}
+	for programID, imageID := range entries {
+		if !isSDImageID(imageID) {
+			continue
+		}
+		old := indexMap[programID]
+		indexMap[programID] = indexEntry{ImageID: imageID, LastRequestUnix: nowUnix}
+		indexImageRequests[imageID] = nowUnix
+		if old.ImageID != "" && old.ImageID != imageID {
+			recalcSet[old.ImageID] = struct{}{}
+		}
+	}
+	indexMu.Unlock()
+
+	if len(recalcSet) > 0 {
+		ids := make([]string, 0, len(recalcSet))
+		for id := range recalcSet {
+			ids = append(ids, id)
+		}
+		indexRecalculateImageRequests(ids)
 	}
 
 	return indexSave()
@@ -281,7 +416,8 @@ func indexDelete(programID string) error {
 		indexRecalculateImageRequests(recalc)
 	}
 
-	return indexSave()
+	indexSaveDebounced()
+	return nil
 }
 
 func indexDeleteImageIDs(imageIDs []string) error {
@@ -316,7 +452,8 @@ func indexDeleteImageIDs(imageIDs []string) error {
 	}
 	indexMu.Unlock()
 	if changed {
-		return indexSave()
+		indexSaveDebounced()
+		return nil
 	}
 	return nil
 }
