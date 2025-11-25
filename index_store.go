@@ -64,6 +64,11 @@ func preindexSDPosters() {
 			imageID = chosenID
 		}
 
+		if !isSDImageID(imageID) {
+			skipped++
+			continue
+		}
+
 		if imageID == "" {
 			skipped++
 			continue
@@ -242,6 +247,26 @@ func isOverrideImageID(imageID string) bool {
 	return ok
 }
 
+// isSDImageID returns true if the identifier looks like an SD-hosted asset (no URL/path bits).
+func isSDImageID(imageID string) bool {
+	if imageID == "" {
+		return false
+	}
+
+	low := strings.ToLower(imageID)
+	if strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") {
+		return false
+	}
+	if strings.Contains(low, "tmdb") {
+		return false
+	}
+	if strings.ContainsAny(imageID, "/\\") {
+		return false
+	}
+
+	return true
+}
+
 func indexSave() error {
 	if !indexLoaded {
 		indexInit()
@@ -277,7 +302,7 @@ func indexSet(programID, imageID string) error {
 	if !indexLoaded {
 		indexInit()
 	}
-	if imageID == "" {
+	if !isSDImageID(imageID) {
 		return nil
 	}
 	nowUnix := time.Now().Unix()
@@ -320,7 +345,7 @@ func indexApplyBatch(entries map[string]string) error {
 		indexImageRequests = map[string]int64{}
 	}
 	for programID, imageID := range entries {
-		if imageID == "" {
+		if !isSDImageID(imageID) {
 			continue
 		}
 		old := indexMap[programID]
