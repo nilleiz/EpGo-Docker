@@ -45,6 +45,39 @@ func (e indexEntry) lastRequest() time.Time {
 	return time.Unix(e.LastRequestUnix, 0).UTC()
 }
 
+// preindexSDPosters iterates over cached metadata and builds the ProgramID → imageID index.
+// This can be expensive on large caches, so it can be disabled via configuration.
+func preindexSDPosters() {
+	start := time.Now()
+	indexInit()
+
+	mapped := 0
+	skipped := 0
+
+	for programID := range Cache.Metadata {
+		imageID := ""
+		if overrideID, ok := overrideImageForProgram(programID); ok {
+			imageID = overrideID
+		} else if chosenID, _, ok := Cache.GetChosenSDImage(programID); ok {
+			imageID = chosenID
+		}
+
+		if imageID == "" {
+			skipped++
+			continue
+		}
+
+		if err := indexSet(programID, imageID); err != nil {
+			logger.Warn("Preindex: failed to persist poster mapping", "programID", programID, "imageID", imageID, "error", err)
+			continue
+		}
+
+		mapped++
+	}
+
+	logger.Info("Preindex: SD poster index built", "mapped", mapped, "skipped", skipped, "duration", time.Since(start))
+}
+
 func indexFilePath() string {
 	// Sidecar next to the cache file
 	p := Config.Files.Cache
