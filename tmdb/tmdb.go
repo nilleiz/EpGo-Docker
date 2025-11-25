@@ -19,12 +19,33 @@ const (
 	defaultPosterSize = "w500" // sharper default for Plex posters
 	httpTimeout       = 8 * time.Second
 	userAgent         = "EpGo-Docker (+https://github.com/nilleiz/EpGo-Docker)"
+	noPosterSentinel  = "__NO_POSTER__"
 )
 
 var (
 	// fetchLogOnce ensures we only log the long-running TMDb fetch notice once.
 	fetchLogOnce sync.Once
+
+	httpClient = &http.Client{Timeout: httpTimeout}
+
+	// caches holds in-memory copies of TMDb cache files keyed by filename.
+	caches sync.Map
 )
+
+// isV4Token detects whether the provided TMDb credential looks like a v4 read
+// access token (JWT). v3 keys are short (32 chars) and should be sent as a
+// query parameter, while v4 tokens are long JWT strings that belong in the
+// Authorization header.
+func isV4Token(key string) bool {
+	if key == "" {
+		return false
+	}
+
+	// JWTs start with eyJ... and contain dots; any substantially long key should
+	// also be treated as v4-style to avoid misusing short v3 API keys as Bearer
+	// tokens (which TMDb rejects by closing the connection).
+	return strings.HasPrefix(key, "eyJ") || strings.Contains(key, ".") || len(key) > 50
+}
 
 // posterURL builds a full TMDb image URL from a path and size.
 // If size is empty, defaultPosterSize is used.
@@ -90,7 +111,13 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 	}
 
 	// 3) Cache hit?
-	if cachedPath, err := getImageURL(origTerm+"-"+mediaType, imageCacheFile); err != nil {
+	cache, err := getCache(imageCacheFile)
+	if err != nil {
+		return "", fmt.Errorf("tmdb: error preparing cache: %w", err)
+	}
+
+	cachedKey := origTerm + "-" + mediaType
+	if cachedPath, err := cache.getImageURL(cachedKey); err != nil {
 		return "", fmt.Errorf("tmdb: error checking cache: %w", err)
 	} else if cachedPath != "" {
 		return posterURL(cachedPath, ""), nil // default w500
@@ -100,7 +127,6 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 	})
 
 	// 4) HTTP client and request scaffold
-	client := &http.Client{Timeout: httpTimeout}
 	buildReq := func(qStr, lang string) (*http.Request, error) {
 		req, err := http.NewRequest(http.MethodGet, tmdbUrl, nil)
 		if err != nil {
@@ -113,10 +139,18 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 		}
 		q.Add("page", "1")
 		q.Add("include_adult", "false")
+
+		if !isV4Token(tmdbApiKey) {
+			// v3 keys must be sent as query params; using them as Bearer tokens will
+			// cause TMDb to close the connection, leading to unexpected EOF errors.
+			q.Add("api_key", tmdbApiKey)
+		}
 		req.URL.RawQuery = q.Encode()
 
-		// TMDb v4 Read Access Token (JWT) via Bearer
-		req.Header.Set("Authorization", "Bearer "+tmdbApiKey)
+		if isV4Token(tmdbApiKey) {
+			// TMDb v4 Read Access Token (JWT) via Bearer
+			req.Header.Set("Authorization", "Bearer "+tmdbApiKey)
+		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", userAgent)
 		return req, nil
@@ -143,7 +177,7 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 				continue
 			}
 
-			resp, err := client.Do(req)
+			resp, err := httpClient.Do(req)
 			if err != nil {
 				// network error: remember, but continue
 				lastErr = err
@@ -188,11 +222,15 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 		if lastHTTPStatus != 0 && lastHTTPStatus != http.StatusOK {
 			return "", fmt.Errorf("tmdb returned HTTP %d with no usable results", lastHTTPStatus)
 		}
+		// Cache negative result to avoid hammering TMDb for items that have no poster
+		if err := cache.cacheNoPoster(cachedKey); err != nil {
+			logger.Warn("tmdb: unable to cache negative result", "error", err)
+		}
 		return "", nil
 	}
 
 	// 7) Cache the *path* (not full URL)
-	if err := addImageToCache(origTerm+"-"+mediaType, posterPath, imageCacheFile); err != nil {
+	if err := cache.addImageToCache(origTerm+"-"+mediaType, posterPath); err != nil {
 		logger.Error("tmdb: error adding to cache", "error", err)
 	}
 
@@ -200,59 +238,96 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 	return posterURL(posterPath, ""), nil
 }
 
-func getImageURL(name, cacheFile string) (string, error) {
-	f, err := os.Open(cacheFile)
+type imageCache struct {
+	filePath string
+	entries  map[string]string
+	mu       sync.RWMutex
+	loaded   bool
+	saveMu   sync.Mutex
+}
+
+func getCache(cacheFile string) (*imageCache, error) {
+	cachePtr, _ := caches.LoadOrStore(cacheFile, &imageCache{filePath: cacheFile, entries: make(map[string]string)})
+	cache := cachePtr.(*imageCache)
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	if cache.loaded {
+		return cache, nil
+	}
+
+	f, err := os.Open(cache.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil
+			cache.loaded = true
+			return cache, nil
 		}
-		return "", fmt.Errorf("error opening image cache file: %w", err)
+		return nil, fmt.Errorf("error opening image cache file: %w", err)
 	}
 	defer f.Close()
 
-	var cache []map[string]string
+	var diskCache []map[string]string
 	dec := json.NewDecoder(f)
-	if err := dec.Decode(&cache); err != nil {
-		if err != io.EOF {
-			return "", fmt.Errorf("error decoding JSON: %w", err)
-		}
+	if err := dec.Decode(&diskCache); err != nil && err != io.EOF {
+		return nil, fmt.Errorf("error decoding JSON: %w", err)
 	}
 
-	for _, entry := range cache {
-		if entry["name"] == name {
-			return entry["url"], nil
+	for _, entry := range diskCache {
+		if name, ok := entry["name"]; ok {
+			if url, ok := entry["url"]; ok {
+				cache.entries[name] = url
+			}
 		}
+	}
+	cache.loaded = true
+
+	return cache, nil
+}
+
+func (c *imageCache) getImageURL(name string) (string, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if v := c.entries[name]; v != "" {
+		if v == noPosterSentinel {
+			return "", nil
+		}
+		return v, nil
 	}
 	return "", nil
 }
 
-func addImageToCache(name, url, cacheFile string) error {
-	entry := map[string]string{
-		"name": name,
-		"url":  url,
+func (c *imageCache) addImageToCache(name, url string) error {
+	c.mu.Lock()
+	if existing, ok := c.entries[name]; ok && existing == url {
+		c.mu.Unlock()
+		return nil
 	}
 
-	f, err := os.OpenFile(cacheFile, os.O_RDWR|os.O_CREATE, 0644)
+	c.entries[name] = url
+
+	// Take a snapshot so we can write to disk without holding the primary lock
+	snapshot := make(map[string]string, len(c.entries))
+	for n, u := range c.entries {
+		snapshot[n] = u
+	}
+	c.mu.Unlock()
+
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+
+	f, err := os.OpenFile(c.filePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("error opening image cache file: %w", err)
 	}
 	defer f.Close()
 
-	var cache []map[string]string
-	dec := json.NewDecoder(f)
-	if err := dec.Decode(&cache); err != nil && err != io.EOF {
-		return fmt.Errorf("error decoding JSON: %w", err)
+	// Re-encode entire map to keep file consistent with in-memory state
+	cacheSlice := make([]map[string]string, 0, len(snapshot))
+	for n, u := range snapshot {
+		cacheSlice = append(cacheSlice, map[string]string{"name": n, "url": u})
 	}
 
-	// Avoid duplicates
-	for _, e := range cache {
-		if e["name"] == name && e["url"] == url {
-			return nil
-		}
-	}
-	cache = append(cache, entry)
-
-	// Seek to start & truncate to avoid trailing bytes from previous content
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("error seeking to beginning of file: %w", err)
 	}
@@ -261,8 +336,12 @@ func addImageToCache(name, url, cacheFile string) error {
 	}
 
 	enc := json.NewEncoder(f)
-	if err := enc.Encode(cache); err != nil {
+	if err := enc.Encode(cacheSlice); err != nil {
 		return fmt.Errorf("error encoding JSON: %w", err)
 	}
 	return nil
+}
+
+func (c *imageCache) cacheNoPoster(name string) error {
+	return c.addImageToCache(name, noPosterSentinel)
 }
