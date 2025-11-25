@@ -34,8 +34,8 @@ if (-not $Ref -or -not $Tag) {
   exit 1
 }
 
-Write-Host "Building image $ImageName:$Tag with REF=$Ref..."
-docker build --no-cache --build-arg "REF=$Ref" -t "$ImageName:$Tag" .
+Write-Host "Building image $ImageName:$Tag with REF=$Ref (no cache)..."
+docker build --pull --no-cache --build-arg "REF=$Ref" -t "$ImageName:$Tag" .
 
 Write-Host "Image built successfully."
 if ($Push) {
