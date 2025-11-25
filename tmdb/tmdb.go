@@ -19,6 +19,7 @@ const (
 	defaultPosterSize = "w500" // sharper default for Plex posters
 	httpTimeout       = 8 * time.Second
 	userAgent         = "EpGo-Docker (+https://github.com/nilleiz/EpGo-Docker)"
+	noPosterSentinel  = "__NO_POSTER__"
 )
 
 var (
@@ -115,7 +116,8 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 		return "", fmt.Errorf("tmdb: error preparing cache: %w", err)
 	}
 
-	if cachedPath, err := cache.getImageURL(origTerm + "-" + mediaType); err != nil {
+	cachedKey := origTerm + "-" + mediaType
+	if cachedPath, err := cache.getImageURL(cachedKey); err != nil {
 		return "", fmt.Errorf("tmdb: error checking cache: %w", err)
 	} else if cachedPath != "" {
 		return posterURL(cachedPath, ""), nil // default w500
@@ -220,6 +222,10 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 		if lastHTTPStatus != 0 && lastHTTPStatus != http.StatusOK {
 			return "", fmt.Errorf("tmdb returned HTTP %d with no usable results", lastHTTPStatus)
 		}
+		// Cache negative result to avoid hammering TMDb for items that have no poster
+		if err := cache.cacheNoPoster(cachedKey); err != nil {
+			logger.Warn("tmdb: unable to cache negative result", "error", err)
+		}
 		return "", nil
 	}
 
@@ -282,7 +288,13 @@ func getCache(cacheFile string) (*imageCache, error) {
 func (c *imageCache) getImageURL(name string) (string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.entries[name], nil
+	if v := c.entries[name]; v != "" {
+		if v == noPosterSentinel {
+			return "", nil
+		}
+		return v, nil
+	}
+	return "", nil
 }
 
 func (c *imageCache) addImageToCache(name, url string) error {
@@ -291,6 +303,7 @@ func (c *imageCache) addImageToCache(name, url string) error {
 		c.mu.Unlock()
 		return nil
 	}
+
 	c.entries[name] = url
 
 	// Take a snapshot so we can write to disk without holding the primary lock
@@ -327,4 +340,8 @@ func (c *imageCache) addImageToCache(name, url string) error {
 		return fmt.Errorf("error encoding JSON: %w", err)
 	}
 	return nil
+}
+
+func (c *imageCache) cacheNoPoster(name string) error {
+	return c.addImageToCache(name, noPosterSentinel)
 }
