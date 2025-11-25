@@ -31,6 +31,21 @@ var (
 	caches sync.Map
 )
 
+// isV4Token detects whether the provided TMDb credential looks like a v4 read
+// access token (JWT). v3 keys are short (32 chars) and should be sent as a
+// query parameter, while v4 tokens are long JWT strings that belong in the
+// Authorization header.
+func isV4Token(key string) bool {
+	if key == "" {
+		return false
+	}
+
+	// JWTs start with eyJ... and contain dots; any substantially long key should
+	// also be treated as v4-style to avoid misusing short v3 API keys as Bearer
+	// tokens (which TMDb rejects by closing the connection).
+	return strings.HasPrefix(key, "eyJ") || strings.Contains(key, ".") || len(key) > 50
+}
+
 // posterURL builds a full TMDb image URL from a path and size.
 // If size is empty, defaultPosterSize is used.
 func posterURL(path, size string) string {
@@ -122,10 +137,18 @@ func SearchItem(logger *slog.Logger, searchTerm, mediaType, tmdbApiKey, imageCac
 		}
 		q.Add("page", "1")
 		q.Add("include_adult", "false")
+
+		if !isV4Token(tmdbApiKey) {
+			// v3 keys must be sent as query params; using them as Bearer tokens will
+			// cause TMDb to close the connection, leading to unexpected EOF errors.
+			q.Add("api_key", tmdbApiKey)
+		}
 		req.URL.RawQuery = q.Encode()
 
-		// TMDb v4 Read Access Token (JWT) via Bearer
-		req.Header.Set("Authorization", "Bearer "+tmdbApiKey)
+		if isV4Token(tmdbApiKey) {
+			// TMDb v4 Read Access Token (JWT) via Bearer
+			req.Header.Set("Authorization", "Bearer "+tmdbApiKey)
+		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", userAgent)
 		return req, nil
