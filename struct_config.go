@@ -32,6 +32,9 @@ type config struct {
 			Path         string `yaml:"Image Path"`
 			PosterAspect string `yaml:"Poster Aspect"` // all | 2x3 | 4x3 | 16x9
 
+			// Optional preindexing of SD posters into config_cache.imgindex.json
+			PreindexSDPosters bool `yaml:"Preindex SD Posters"`
+
 			// Lazy on-demand proxy mode. When enabled, XMLTV uses proxied URLs and
 			// images are fetched + cached only on first client request.
 			ProxyMode       bool   `yaml:"Proxy Mode"`
