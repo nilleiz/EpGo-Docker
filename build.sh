@@ -62,8 +62,8 @@ if [[ -z "$REF" || -z "$TAG" ]]; then
   exit 1
 fi
 
-echo "Building image ${IMAGE_NAME}:${TAG} with REF=${REF}..."
-docker build --no-cache --build-arg REF="$REF" -t "${IMAGE_NAME}:${TAG}" .
+echo "Building image ${IMAGE_NAME}:${TAG} with REF=${REF} (no cache)..."
+docker build --pull --no-cache --build-arg REF="$REF" -t "${IMAGE_NAME}:${TAG}" .
 
 echo "Image built successfully."
 if [[ "$PUSH" == true ]]; then
