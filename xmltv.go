@@ -200,12 +200,8 @@ func getProgram(channel EPGoCache) (p []Programme) {
 			}
 		}
 
-		if pinnedImageID != "" && Config.Options.Images.PreindexSDPosters {
-			_ = indexSet(s.ProgramID, pinnedImageID)
-		}
-
-		// TMDb fallback (only if nothing from SD)
-		if imageURL == "" && Config.Options.Images.Tmdb.Enable {
+                // TMDb fallback (only if nothing from SD)
+                if imageURL == "" && Config.Options.Images.Tmdb.Enable {
 			seas := ""
 			if len(pro.EpisodeNums) > 0 && len(pro.EpisodeNums[0].Value) >= 2 {
 				seas = pro.EpisodeNums[0].Value[0:2]

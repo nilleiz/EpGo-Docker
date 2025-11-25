@@ -224,6 +224,12 @@ func StartServer(dir string, port string) {
 			imageID = overrideID
 		}
 
+		if imageID != "" && !isSDImageID(imageID) {
+			logger.Warn("Proxy: non-SD image request rejected", "programID", programID, "imageID", imageID)
+			http.NotFound(w, r)
+			return
+		}
+
 		blockGlobal, blockRemain := shouldBlockGlobal()
 
 		// Ensure image folder exists
@@ -476,13 +482,21 @@ func StartServer(dir string, port string) {
 
 		useResolved := ok && chosen.URI != ""
 		if useResolved {
-			logger.Info("Proxy: resolved image candidate",
-				"programID", programID,
-				"imageID", sdImageIDFromURI(chosen.URI),
-				"category", chosen.Category, "aspect", chosen.Aspect, "w", chosen.Width, "h", chosen.Height,
-				"uri", chosen.URI)
-			imageID = sdImageIDFromURI(chosen.URI)
-		} else {
+			candidateID := sdImageIDFromURI(chosen.URI)
+			if !isSDImageID(candidateID) {
+				logger.Warn("Proxy: resolved non-SD image skipped", "programID", programID, "imageID", candidateID, "uri", chosen.URI)
+				useResolved = false
+				imageID = ""
+			} else {
+				logger.Info("Proxy: resolved image candidate",
+					"programID", programID,
+					"imageID", candidateID,
+					"category", chosen.Category, "aspect", chosen.Aspect, "w", chosen.Width, "h", chosen.Height,
+					"uri", chosen.URI)
+				imageID = candidateID
+			}
+		}
+		if !useResolved {
 			imageID = indexImageID
 			if imageID == "" {
 				if blockGlobal {
@@ -496,6 +510,12 @@ func StartServer(dir string, port string) {
 				return
 			}
 			logger.Info("Proxy: using cached image id (no new metadata)", "programID", programID, "imageID", imageID)
+		}
+
+		if imageID != "" && !isSDImageID(imageID) {
+			logger.Warn("Proxy: non-SD image mapping ignored", "programID", programID, "imageID", imageID)
+			http.NotFound(w, r)
+			return
 		}
 
 		// During a global pause, still serve from cache if the resolved image is already on disk
