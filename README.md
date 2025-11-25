@@ -22,6 +22,7 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
 - **Smart Image Cache & Proxy (v1.2+)**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
+- **Optional SD poster preindexing (v1.3.2)**: Toggle preindexing of Schedules Direct posters to shorten refresh times on large caches; the proxy can build the index lazily at runtime.
 - **NEW (v1.3) Skip refresh when XMLTV is recent**: Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
 - **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh or purge. (0 keeps images indefinitely).
 - **NEW (v1.3) Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
@@ -63,6 +64,20 @@ services:
 ```bash
 docker compose up -d
 ```
+
+---
+
+## ✨ NEW in v1.3.2
+
+### Optional SD poster preindexing
+Use the new `Preindex SD Posters` option (enabled by default) to control when the ProgramID→image index is rebuilt. Leave it on for consistent proxy performance, or disable it to shorten refreshes on very large caches and let the proxy build mappings lazily at runtime.
+
+### Faster, more reliable TMDb fallback
+- Works with both TMDb v3 API keys (query parameter) and v4 bearer tokens (Authorization header).
+- Caches missing-poster lookups and keeps the TMDb cache in memory to avoid repeated disk reads and redundant HTTP calls.
+
+### Proxy resilience during upstream pauses
+- Rejects non-Schedules Direct IDs, loads cached metadata even after a failed refresh, and can keep serving resolved artwork already on disk while global downloads are paused.
 
 ---
 
@@ -197,6 +212,7 @@ Options:
   Images:
     Download Images from Schedules Direct: false  # set false to allow on-demand fetch, true will download all images on building EPG (legacy)
     Image Path: /app/images/
+    Preindex SD Posters: true                    # disable to build the ProgramID→image index lazily at runtime
     Poster Aspect: 2x3
 
     Proxy Mode: true                              # set false when using "Download Images from Schedules Direct: true"
@@ -336,6 +352,7 @@ Options:
   Images:
     Download Images from Schedules Direct: false
     Image Path: ""
+    Preindex SD Posters: true               # disable to build the ProgramID→image index lazily at runtime
     Poster Aspect: 2x3           # ← new (2x3 | 4x3 | 16x9 | all)
 
     The MovieDB:
