@@ -21,6 +21,7 @@ Options:
     Images:
         Download Images: false
         Image Path: ""
+        Preindex SD Posters: true      # enable preindexing of SD posters into config_cache.imgindex.json
         Proxy Mode: false
         Proxy Base URL: ""
         Max Cache Age Days: 0

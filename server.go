@@ -181,6 +181,10 @@ func StartServer(dir string, port string) {
 	// Load ProgramID → imageID index
 	indexInit()
 
+	if Config.Options.Images.ProxyMode && !Config.Options.Images.PreindexSDPosters {
+		logger.Info("Proxy: SD poster index will be built during runtime")
+	}
+
 	cacheDays := Config.Options.Images.MaxCacheAgeDays
 	folderImage := Config.Options.Images.Path
 	if folderImage == "" {
