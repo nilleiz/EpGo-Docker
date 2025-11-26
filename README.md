@@ -22,10 +22,10 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **Poster Aspect control**: Choose 2×3 / 4×3 / 16×9 / all for Schedules Direct images.
 - **Sharper TMDb posters**: TMDb fallback returns **w500** posters by default.
 - **Smart Image Cache & Proxy (v1.2+)**: On-demand image caching with a built-in proxy that fetches artwork once from Schedules Direct and then serves it locally from disk—stable, fast, and fewer API calls.
-- **Optional SD poster preindexing (v1.3.2)**: Toggle preindexing of Schedules Direct posters to shorten refresh times on large caches; the proxy can build the index lazily at runtime.
 - **NEW (v1.3) Skip refresh when XMLTV is recent**: Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
 - **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh or purge. (0 keeps images indefinitely).
 - **NEW (v1.3) Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
+- **Optional SD poster preindexing (v1.3.2)**: Toggle preindexing of Schedules Direct posters to shorten refresh times on large caches; the proxy can build the index lazily at runtime.
 
 ---
 
