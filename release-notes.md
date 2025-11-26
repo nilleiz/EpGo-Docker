@@ -1,3 +1,14 @@
+# Release Notes — 1.3.2
+
+## Highlights
+- TMDb fallback now supports both v3 API keys and v4 bearer tokens, caches missing-poster lookups, and reuses an in-memory cache to reduce repeated disk reads.
+- SD poster preindexing can be disabled with the new `Preindex SD Posters` option for faster refreshes on large caches; the proxy will build the mapping lazily at runtime instead.
+- Proxy robustness improvements: non-SD image IDs are rejected, cached metadata is loaded even after a failed refresh, resolved art can still be served during upstream pauses, and SD tokens are only requested when a download is required.
+
+## Bugfixes
+- TMDb lookups no longer fail with unexpected EOF when using v3 keys, and negative results are memoised to avoid repeatedly hammering TMDb when no poster exists.
+- The SD proxy avoids caching or serving non-SD image IDs and can continue serving already-cached resolved posters during global download blocks.
+
 # Release Notes — 1.3.1
 
 ## Highlights

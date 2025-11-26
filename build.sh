@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# build.sh - Build the EpGo Docker image.
+# build.sh - Build the EpGo Docker image (multi-arch aware).
 #
 # Usage examples:
-#   ./build.sh                          # prompts for REF and tag values
-#   ./build.sh -r v1.3-RC -t dev        # passes REF and tag via flags
-#   ./build.sh --ref main --tag qa --push # build and push
+#   ./build.sh                                # prompts for REF and tag values, loads native arch locally
+#   ./build.sh -r v1.3-RC -t dev              # passes REF and tag via flags
+#   ./build.sh --ref main --tag qa --push     # build and push multi-arch (amd64/arm64)
+#   ./build.sh -r main -t qa --push --latest  # also push the "latest" tag
+#   ./build.sh -r main -t qa --push --develop # also push the "develop" tag
 #
 # Flags:
 #   -r, --ref    Build argument for REF (required; prompted if omitted)
 #   -t, --tag    Image tag to apply to nillivanilli0815/epgo (required; prompted if omitted)
-#   -p, --push   Push the built image to the registry after a successful build
+#   -p, --push   Build and push a multi-arch image (amd64, arm64) to the registry
+#   -l, --latest Also tag the image as "latest" (use with --push)
+#   -d, --develop Also tag the image as "develop" (use with --push)
 #   -h, --help   Show this help message
 
 set -euo pipefail
@@ -18,9 +22,13 @@ IMAGE_NAME="nillivanilli0815/epgo"
 REF=""
 TAG=""
 PUSH=false
+PUSH_LATEST=false
+PUSH_DEVELOP=false
+PLATFORMS="linux/amd64,linux/arm64"
+BUILDER_NAME="epgo-builder"
 
 print_help() {
-  sed -n '1,18p' "$0"
+  sed -n '1,28p' "$0"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -35,6 +43,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     -p|--push)
       PUSH=true
+      shift 1
+      ;;
+    -l|--latest)
+      PUSH_LATEST=true
+      shift 1
+      ;;
+    -d|--develop)
+      PUSH_DEVELOP=true
       shift 1
       ;;
     -h|--help)
@@ -62,11 +78,44 @@ if [[ -z "$REF" || -z "$TAG" ]]; then
   exit 1
 fi
 
-echo "Building image ${IMAGE_NAME}:${TAG} with REF=${REF}..."
-docker build --no-cache --build-arg REF="$REF" -t "${IMAGE_NAME}:${TAG}" .
-
-echo "Image built successfully."
-if [[ "$PUSH" == true ]]; then
-  echo "Pushing ${IMAGE_NAME}:${TAG}..."
-  docker push "${IMAGE_NAME}:${TAG}"
+TAG_ARGS=("-t" "${IMAGE_NAME}:${TAG}")
+TAG_LIST=("${IMAGE_NAME}:${TAG}")
+if [[ "$PUSH_LATEST" == true ]]; then
+  TAG_ARGS+=("-t" "${IMAGE_NAME}:latest")
+  TAG_LIST+=("${IMAGE_NAME}:latest")
 fi
+if [[ "$PUSH_DEVELOP" == true ]]; then
+  TAG_ARGS+=("-t" "${IMAGE_NAME}:develop")
+  TAG_LIST+=("${IMAGE_NAME}:develop")
+fi
+TAG_STRING=$(IFS=", "; echo "${TAG_LIST[*]}")
+
+if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
+  docker buildx create --name "$BUILDER_NAME" --use
+else
+  docker buildx use "$BUILDER_NAME"
+fi
+
+if [[ "$PUSH" == true ]]; then
+  echo "Building and pushing multi-arch image(s) ${TAG_STRING} for ${PLATFORMS} with REF=${REF}..."
+  docker buildx build \
+    --platform "$PLATFORMS" \
+    --build-arg REF="$REF" \
+    --no-cache \
+    "${TAG_ARGS[@]}" \
+    --push \
+    .
+else
+  # Load a single-architecture image locally; buildx cannot load a multi-arch manifest into the local daemon.
+  NATIVE_PLATFORM=$(docker info --format '{{.OSType}}/{{.Architecture}}')
+  echo "Building native image(s) ${TAG_STRING} for ${NATIVE_PLATFORM} with REF=${REF} (use --push for multi-arch)..."
+  docker buildx build \
+    --platform "$NATIVE_PLATFORM" \
+    --build-arg REF="$REF" \
+    --no-cache \
+    "${TAG_ARGS[@]}" \
+    --load \
+    .
+fi
+
+echo "Image build completed."

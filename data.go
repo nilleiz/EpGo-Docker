@@ -67,6 +67,14 @@ func (sd *SD) Update(filename string) (err error) {
 
 	sd.GetData()
 
+	if Config.Server.Enable && Config.Options.Images.ProxyMode {
+		if Config.Options.Images.PreindexSDPosters {
+			preindexSDPosters()
+		} else {
+			logger.Info("Skipping SD poster preindex; index will be built during runtime")
+		}
+	}
+
 	runtime.GC()
 
 	err = CreateXMLTV(filename)

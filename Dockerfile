@@ -1,5 +1,8 @@
 # ---------- Stage 1: Builder ----------
-FROM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN apk add --no-cache git ca-certificates
 WORKDIR /src
@@ -18,12 +21,12 @@ RUN mkdir /build-helper
 RUN mv nextrun.go /build-helper/
 WORKDIR /build-helper
 RUN go mod init nextrun && go get github.com/robfig/cron/v3
-RUN CGO_ENABLED=0 go build -o /nextrun nextrun.go
+RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 go build -o /nextrun nextrun.go
 
 # --- Build the main 'epgo' application ---
 WORKDIR /src
 RUN go mod tidy
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /epgo .
+RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /epgo .
 
 # ---------- Stage 2: Final ----------
 FROM alpine:3.20
