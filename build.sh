@@ -101,6 +101,7 @@ if [[ "$PUSH" == true ]]; then
   docker buildx build \
     --platform "$PLATFORMS" \
     --build-arg REF="$REF" \
+    --no-cache \
     "${TAG_ARGS[@]}" \
     --push \
     .
@@ -111,6 +112,7 @@ else
   docker buildx build \
     --platform "$NATIVE_PLATFORM" \
     --build-arg REF="$REF" \
+    --no-cache \
     "${TAG_ARGS[@]}" \
     --load \
     .
