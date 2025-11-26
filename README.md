@@ -447,5 +447,3 @@ epgo -config MY_CONFIG_FILE.yaml
 **The configuration file must exist.**
 
 ---
-
-If you want me to add a short “Upgrade notes” section (e.g., “v1.0: Poster Aspect support; TMDb posters now w500”), I can append that too.
