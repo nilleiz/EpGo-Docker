@@ -63,7 +63,8 @@ if (-not (docker buildx inspect $BuilderName 2>$null)) {
 if ($Push) {
   $buildArgs = @(
     '--platform', $Platforms,
-    '--build-arg', "REF=$Ref"
+    '--build-arg', "REF=$Ref",
+    '--no-cache'
   ) + $tagArgs + @('--push', '.')
   Write-Host "Building and pushing multi-arch image(s) $tagString for $Platforms with REF=$Ref..."
   docker buildx build @buildArgs
@@ -71,7 +72,8 @@ if ($Push) {
   $nativePlatform = docker info --format '{{.OSType}}/{{.Architecture}}'
   $buildArgs = @(
     '--platform', $nativePlatform,
-    '--build-arg', "REF=$Ref"
+    '--build-arg', "REF=$Ref",
+    '--no-cache'
   ) + $tagArgs + @('--load', '.')
   Write-Host "Building native image(s) $tagString for $nativePlatform with REF=$Ref (use -Push for multi-arch)..."
   docker buildx build @buildArgs
