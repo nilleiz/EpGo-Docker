@@ -54,7 +54,7 @@ services:
       - CRON_SCHEDULE=0 2 * * *     # Example: run daily at 02:00
       # - RUN_ONCE=true             # Or run once and exit
     ports:
-      - "8765:8765/tcp" # Must match what is set in config.yaml
+      - "8765:8765/tcp"             # Must match what is set in config.yaml
     volumes:
       - ./epgo_data:/app            # persistent config/cache/XML + images
 
