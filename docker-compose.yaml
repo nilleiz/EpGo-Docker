@@ -11,7 +11,8 @@ services:
           # --- CHOOSE ONE EXECUTION MODE ---
           - CRON_SCHEDULE=0 2 * * * # Example: Run daily at 2:00 AM
           # - RUN_ONCE=true
-
+        ports:
+          - "8765:8765/tcp" # Must match what is set in config.yaml
         volumes:
           # This maps a local folder to the container for persistent data
           - ./epgo_data:/app
