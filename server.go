@@ -605,7 +605,7 @@ func StartServer(dir string, port string) {
 		var imageURL string
 		imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
 
-		// 4) Download (retry once on 401)
+		// 4) Download (retry once on 401/403 with token refresh)
 		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
 
 		client := &http.Client{Timeout: 20 * time.Second}
@@ -621,21 +621,35 @@ func StartServer(dir string, port string) {
 			http.Error(w, "fetch failed", http.StatusBadGateway)
 			return
 		}
-		if resp.StatusCode == http.StatusUnauthorized {
-			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			statusText := "unauthorized"
+			if resp.StatusCode == http.StatusForbidden {
+				statusText = "forbidden"
+			}
+			logger.Warn("Proxy: SD token rejected, attempting refresh", "programID", programID, "imageID", imageID, "status", statusText)
 			resp.Body.Close()
-			if token2, err2 := forceRefreshToken(); err2 == nil {
-				imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
-				resp, err = fetch(imageURL)
-				if err != nil {
-					logger.Error("Proxy: fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
-					http.Error(w, "fetch retry failed", http.StatusBadGateway)
-					return
+
+			var refreshAttempted bool
+			if token2, attempted, err2 := forceRefreshTokenLimited(); err2 == nil {
+				refreshAttempted = attempted
+				if attempted {
+					imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
 				}
 			} else {
-				logger.Error("Proxy: token refresh failed", "programID", programID, "error", err2)
+				logger.Error("Proxy: token refresh failed", "programID", programID, "imageID", imageID, "error", err2)
 				http.Error(w, "token refresh failed", http.StatusBadGateway)
 				return
+			}
+
+			resp, err = fetch(imageURL)
+			if err != nil {
+				logger.Error("Proxy: fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
+				http.Error(w, "fetch retry failed", http.StatusBadGateway)
+				return
+			}
+
+			if !refreshAttempted && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+				logger.Warn("Proxy: SD token still rejected and refresh suppressed by cooldown", "programID", programID, "imageID", imageID, "status", resp.Status)
 			}
 		}
 		defer resp.Body.Close()
