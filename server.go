@@ -593,6 +593,53 @@ func StartServer(dir string, port string) {
 			}
 		}
 
+		serveFresh := func() bool {
+			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+				if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok {
+					_ = ensureProgramMetadata(programID)
+				}
+				if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
+					logger.Info("Proxy: serve freshly cached",
+						"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
+				} else {
+					logger.Info("Proxy: serve freshly cached (no meta)",
+						"programID", programID, "imageID", imageID, "path", filePath)
+				}
+				_ = indexSet(programID, imageID)
+				serveFileCached(w, r, filePath)
+				return true
+			}
+			return false
+		}
+
+		// Only allow one SD fetch per imageID at a time to avoid duplicate downloads
+		var guard *sync.WaitGroup
+
+		if g, first := acquireImageDownload(imageID); g != nil {
+			guard = g
+			if first {
+				defer releaseImageDownload(imageID)
+			} else {
+				guard.Wait()
+				if serveFresh() {
+					return
+				}
+				// If file is still missing, try to become the owner now
+				if g2, first2 := acquireImageDownload(imageID); g2 != nil {
+					guard = g2
+					if first2 {
+						defer releaseImageDownload(imageID)
+					} else {
+						guard.Wait()
+						if serveFresh() {
+							return
+						}
+						logger.Warn("Proxy: concurrent fetch completed without cached file", "programID", programID, "imageID", imageID)
+					}
+				}
+			}
+		}
+
 		// Token (only when a download is required)
 		token, err := getSDToken()
 		if err != nil {
@@ -698,18 +745,10 @@ func StartServer(dir string, port string) {
 		logger.Info("Proxy: saved image", "programID", programID, "imageID", imageID, "path", filePath)
 
 		// Update index and serve (log with category if possible)
-		_ = indexSet(programID, imageID)
-		if _, _, _, _, ok := lookupImageMeta(programID, imageID); !ok {
-			_ = ensureProgramMetadata(programID)
+		if !serveFresh() {
+			logger.Warn("Proxy: freshly downloaded image missing on disk", "programID", programID, "imageID", imageID, "path", filePath)
+			http.Error(w, "downloaded image missing", http.StatusInternalServerError)
 		}
-		if cat, asp, wpx, hpx, ok := lookupImageMeta(programID, imageID); ok {
-			logger.Info("Proxy: serve freshly cached",
-				"programID", programID, "imageID", imageID, "category", cat, "aspect", asp, "w", wpx, "h", hpx, "path", filePath)
-		} else {
-			logger.Info("Proxy: serve freshly cached (no meta)",
-				"programID", programID, "imageID", imageID, "path", filePath)
-		}
-		serveFileCached(w, r, filePath)
 	})
 
 	// Static server
