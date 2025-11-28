@@ -60,6 +60,14 @@ func loadTokenFromDisk() {
 	}
 }
 
+func deleteTokenFromDisk() {
+	path := tokenFilePath()
+	_ = os.Remove(path)
+	if logger != nil {
+		logger.Warn("SD token: deleted persisted token", "path", path)
+	}
+}
+
 func saveTokenToDisk(tok string, exp time.Time) {
 	path := tokenFilePath()
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
@@ -118,11 +126,15 @@ func refTimeFromErr(e sdLoginErr) time.Time {
 //   - Enforces a minimum spacing at boot to avoid multiple logins.
 //   - If SD responds with TOO_MANY_LOGINS (4009), set a global pause until next UTC midnight +5m.
 func getSDToken() (string, error) {
+	return getSDTokenWithOptions(false)
+}
+
+func getSDTokenWithOptions(skipDiskLoad bool) (string, error) {
 	// Initial lazy load from disk
 	sdTokenMu.RLock()
 	tokLoaded := sdToken != ""
 	sdTokenMu.RUnlock()
-	if !tokLoaded {
+	if !tokLoaded && !skipDiskLoad {
 		sdTokenMu.Lock()
 		if sdToken == "" {
 			loadTokenFromDisk()
@@ -222,24 +234,40 @@ func forceRefreshToken() (string, error) {
 	sdToken = ""
 	sdTokenExpiry = time.Time{}
 	sdTokenMu.Unlock()
-	return getSDToken()
+	deleteTokenFromDisk()
+	return getSDTokenWithOptions(true)
 }
 
 // forceRefreshTokenLimited enforces a cooldown between forced refreshes to prevent
 // tight retry loops from spamming the Schedules Direct login endpoint.
 // Returns the new token, a boolean indicating whether a refresh was attempted,
-// and any error from the refresh attempt.
-func forceRefreshTokenLimited() (string, bool, error) {
+// and any error from the refresh attempt. If overrideCooldown is true, the
+// cooldown check is bypassed (but the timestamp is still updated) so callers
+// can recover immediately from scenarios like SD invalidating tokens when the
+// client IP changes.
+func forceRefreshTokenLimited(overrideCooldown bool) (string, bool, error) {
 	forcedRefreshMu.Lock()
 	defer forcedRefreshMu.Unlock()
 
 	now := time.Now().UTC()
 	if !lastForcedRefresh.IsZero() && now.Sub(lastForcedRefresh) < forcedRefreshCooldown {
+		// We refreshed very recently. Reuse the current token instead of logging in again
+		// to avoid spamming SD when multiple requests fail simultaneously.
+		tok, _ := getSDTokenWithOptions(false)
+
 		retryAt := lastForcedRefresh.Add(forcedRefreshCooldown)
 		if logger != nil {
 			logger.Warn("SD token: forced refresh suppressed due to cooldown", "retry_at_utc", retryAt)
 		}
-		return "", false, nil
+
+		if tok != "" {
+			// Treat as a successful refresh so callers retry with the latest token.
+			return tok, true, nil
+		}
+
+		if !overrideCooldown {
+			return "", false, nil
+		}
 	}
 
 	lastForcedRefresh = now
