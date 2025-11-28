@@ -250,12 +250,24 @@ func forceRefreshTokenLimited(overrideCooldown bool) (string, bool, error) {
 	defer forcedRefreshMu.Unlock()
 
 	now := time.Now().UTC()
-	if !overrideCooldown && !lastForcedRefresh.IsZero() && now.Sub(lastForcedRefresh) < forcedRefreshCooldown {
+	if !lastForcedRefresh.IsZero() && now.Sub(lastForcedRefresh) < forcedRefreshCooldown {
+		// We refreshed very recently. Reuse the current token instead of logging in again
+		// to avoid spamming SD when multiple requests fail simultaneously.
+		tok, _ := getSDTokenWithOptions(false)
+
 		retryAt := lastForcedRefresh.Add(forcedRefreshCooldown)
 		if logger != nil {
 			logger.Warn("SD token: forced refresh suppressed due to cooldown", "retry_at_utc", retryAt)
 		}
-		return "", false, nil
+
+		if tok != "" {
+			// Treat as a successful refresh so callers retry with the latest token.
+			return tok, true, nil
+		}
+
+		if !overrideCooldown {
+			return "", false, nil
+		}
 	}
 
 	lastForcedRefresh = now
