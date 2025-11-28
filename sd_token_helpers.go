@@ -228,13 +228,16 @@ func forceRefreshToken() (string, error) {
 // forceRefreshTokenLimited enforces a cooldown between forced refreshes to prevent
 // tight retry loops from spamming the Schedules Direct login endpoint.
 // Returns the new token, a boolean indicating whether a refresh was attempted,
-// and any error from the refresh attempt.
-func forceRefreshTokenLimited() (string, bool, error) {
+// and any error from the refresh attempt. If overrideCooldown is true, the
+// cooldown check is bypassed (but the timestamp is still updated) so callers
+// can recover immediately from scenarios like SD invalidating tokens when the
+// client IP changes.
+func forceRefreshTokenLimited(overrideCooldown bool) (string, bool, error) {
 	forcedRefreshMu.Lock()
 	defer forcedRefreshMu.Unlock()
 
 	now := time.Now().UTC()
-	if !lastForcedRefresh.IsZero() && now.Sub(lastForcedRefresh) < forcedRefreshCooldown {
+	if !overrideCooldown && !lastForcedRefresh.IsZero() && now.Sub(lastForcedRefresh) < forcedRefreshCooldown {
 		retryAt := lastForcedRefresh.Add(forcedRefreshCooldown)
 		if logger != nil {
 			logger.Warn("SD token: forced refresh suppressed due to cooldown", "retry_at_utc", retryAt)
