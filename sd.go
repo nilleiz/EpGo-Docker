@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -205,7 +206,17 @@ func (sd *SD) Connect() (err error) {
 
 	if resp.StatusCode == http.StatusForbidden && sd.Req.Call != "login" {
 		logger.Warn("SchedulesDirect returned 403; forcing token refresh")
-		tok, attempted, refreshErr := forceRefreshTokenLimited()
+		overrideCooldown := false
+		if errPayload, ok := parseSDLoginErr(body); ok {
+			if strings.EqualFold(errPayload.Response, "INVALID_USER") || errPayload.Code == 4003 {
+				overrideCooldown = true
+				if logger != nil {
+					logger.Warn("SchedulesDirect 403 INVALID_USER; refreshing token due to IP/session change", "server_time", errPayload.ServerTime)
+				}
+			}
+		}
+
+		tok, attempted, refreshErr := forceRefreshTokenLimited(overrideCooldown)
 		if refreshErr != nil {
 			return refreshErr
 		}
