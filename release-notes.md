@@ -1,4 +1,4 @@
-# Release Notes — 1.3.2
+# Release Notes — 1.3.3-RC
 
 ## Highlights
 - TMDb fallback now supports both v3 API keys and v4 bearer tokens, caches missing-poster lookups, and reuses an in-memory cache to reduce repeated disk reads.
