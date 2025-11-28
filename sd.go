@@ -205,14 +205,16 @@ func (sd *SD) Connect() (err error) {
 
 	if resp.StatusCode == http.StatusForbidden && sd.Req.Call != "login" {
 		logger.Warn("SchedulesDirect returned 403; forcing token refresh")
-		tok, refreshErr := forceRefreshToken()
+		tok, attempted, refreshErr := forceRefreshTokenLimited()
 		if refreshErr != nil {
 			return refreshErr
 		}
-		sd.Token = tok
-		resp, body, err = doRequest(sd.Token)
-		if err != nil {
-			return err
+		if attempted {
+			sd.Token = tok
+			resp, body, err = doRequest(sd.Token)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
