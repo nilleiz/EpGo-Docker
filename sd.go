@@ -162,36 +162,60 @@ func (sd *SD) Connect() (err error) {
 
 	var sdStatus SDStatus
 
-	req, err := http.NewRequest(sd.Req.Type, sd.Req.URL, bytes.NewBuffer(sd.Req.Data))
+	doRequest := func(token string) (*http.Response, []byte, error) {
+		req, err := http.NewRequest(sd.Req.Type, sd.Req.URL, bytes.NewBuffer(sd.Req.Data))
+		if err != nil {
+			logger.Warn("Could not create request for Token", "error", err)
+			return nil, nil, err
+		}
+
+		if sd.Req.Compression {
+			req.Header.Set("Accept-Encoding", "deflate,gzip")
+		}
+
+		// Use a versioned, project-identifiable User-Agent as required by Schedules Direct
+		req.Header.Set("Token", token)
+		req.Header.Set("User-Agent", userAgent())
+		req.Header.Set("X-Custom-Header", userAgent())
+		if sd.Req.Type == "POST" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.Error("failed communicate with Schedules Direct API", "error", err)
+			return nil, nil, err
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logger.Error("Could not read response body from Schedules direct token retrieval method", "error", err)
+			return nil, nil, err
+		}
+
+		return resp, body, nil
+	}
+
+	resp, body, err := doRequest(sd.Token)
 	if err != nil {
-		logger.Warn("Could not create request for Token", "error", err)
-		return
+		return err
 	}
 
-	if sd.Req.Compression {
-		req.Header.Set("Accept-Encoding", "deflate,gzip")
-	}
-
-	// Use a versioned, project-identifiable User-Agent as required by Schedules Direct
-	req.Header.Set("Token", sd.Token)
-	req.Header.Set("User-Agent", userAgent())
-	req.Header.Set("X-Custom-Header", userAgent())
-	if sd.Req.Type == "POST" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.Error("failed communicate with Schedules Direct API", "error", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Error("Could not read response body from Schedules direct token retrieval method", "error", err)
-		return
+	if resp.StatusCode == http.StatusForbidden && sd.Req.Call != "login" {
+		logger.Warn("SchedulesDirect returned 403; forcing token refresh")
+		tok, attempted, refreshErr := forceRefreshTokenLimited()
+		if refreshErr != nil {
+			return refreshErr
+		}
+		if attempted {
+			sd.Token = tok
+			resp, body, err = doRequest(sd.Token)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	sd.Resp.Body = body

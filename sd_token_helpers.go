@@ -12,12 +12,16 @@ import (
 // Global token state shared across the process.
 // Ensures we log in at most ~once per 24h and avoid "too many logins".
 var (
-	sdToken        string
-	sdTokenExpiry  time.Time
-	sdTokenMu      sync.RWMutex // guards reads of sdToken/sdTokenExpiry
-	sdRefreshMutex sync.Mutex   // serializes refresh so we don't stampede SD
-	bootTime       = time.Now().UTC()
+	sdToken           string
+	sdTokenExpiry     time.Time
+	sdTokenMu         sync.RWMutex // guards reads of sdToken/sdTokenExpiry
+	sdRefreshMutex    sync.Mutex   // serializes refresh so we don't stampede SD
+	forcedRefreshMu   sync.Mutex
+	lastForcedRefresh time.Time
+	bootTime          = time.Now().UTC()
 )
+
+const forcedRefreshCooldown = 5 * time.Minute
 
 type persistedToken struct {
 	Token       string    `json:"token"`
@@ -72,13 +76,13 @@ func saveTokenToDisk(tok string, exp time.Time) {
 // ---- helpers to interpret SD error payloads ----
 
 type sdLoginErr struct {
-	Response  string `json:"response"`
-	Code      int    `json:"code"`
-	Message   string `json:"message"`
-	DateTime  string `json:"datetime"`
-	ServerID  string `json:"serverID"`
-	Token     string `json:"token"`
-	ServerTime int64 `json:"serverTime"`
+	Response   string `json:"response"`
+	Code       int    `json:"code"`
+	Message    string `json:"message"`
+	DateTime   string `json:"datetime"`
+	ServerID   string `json:"serverID"`
+	Token      string `json:"token"`
+	ServerTime int64  `json:"serverTime"`
 }
 
 func parseSDLoginErr(b []byte) (sdLoginErr, bool) {
@@ -219,4 +223,31 @@ func forceRefreshToken() (string, error) {
 	sdTokenExpiry = time.Time{}
 	sdTokenMu.Unlock()
 	return getSDToken()
+}
+
+// forceRefreshTokenLimited enforces a cooldown between forced refreshes to prevent
+// tight retry loops from spamming the Schedules Direct login endpoint.
+// Returns the new token, a boolean indicating whether a refresh was attempted,
+// and any error from the refresh attempt.
+func forceRefreshTokenLimited() (string, bool, error) {
+	forcedRefreshMu.Lock()
+	defer forcedRefreshMu.Unlock()
+
+	now := time.Now().UTC()
+	if !lastForcedRefresh.IsZero() && now.Sub(lastForcedRefresh) < forcedRefreshCooldown {
+		retryAt := lastForcedRefresh.Add(forcedRefreshCooldown)
+		if logger != nil {
+			logger.Warn("SD token: forced refresh suppressed due to cooldown", "retry_at_utc", retryAt)
+		}
+		return "", false, nil
+	}
+
+	lastForcedRefresh = now
+
+	tok, err := forceRefreshToken()
+	if err != nil {
+		return "", true, err
+	}
+
+	return tok, true, nil
 }
