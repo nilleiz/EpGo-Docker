@@ -25,7 +25,7 @@ This image is built from source, ensuring compatibility with any Docker host arc
 - **NEW (v1.3) Skip refresh when XMLTV is recent**: Set **Skip EPG refresh if XMLTV younger than hours** in your config to reuse a previously generated XMLTV file. EPGo checks the XMLTV modification time at startup and skips the download if it’s newer than the threshold you specify.
 - **NEW (v1.3) Cache expiry controls**: Configure how many days artwork stays cached before automatic refresh or purge. (0 keeps images indefinitely).
 - **NEW (v1.3) Poster overrides**: Force specific shows to use a chosen SD image ID via a simple `overrides.txt` file.
-- **Optional SD poster preindexing (v1.3.2)**: Toggle preindexing of Schedules Direct posters to shorten refresh times on large caches; the proxy can build the index lazily at runtime.
+- **Optional SD poster preindexing (v1.3.3-RC)**: Toggle preindexing of Schedules Direct posters to shorten refresh times on large caches; the proxy can build the index lazily at runtime.
 
 ---
 
@@ -67,7 +67,7 @@ docker compose up -d
 
 ---
 
-## ✨ NEW in v1.3.2
+## ✨ NEW in v1.3.3-RC
 
 ### Optional SD poster preindexing
 Use the new `Preindex SD Posters` option (enabled by default) to control when the ProgramID→image index is rebuilt. Leave it on for consistent proxy performance, or disable it to shorten refreshes on very large caches and let the proxy build mappings lazily at runtime.
