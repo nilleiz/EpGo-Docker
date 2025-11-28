@@ -60,6 +60,14 @@ func loadTokenFromDisk() {
 	}
 }
 
+func deleteTokenFromDisk() {
+	path := tokenFilePath()
+	_ = os.Remove(path)
+	if logger != nil {
+		logger.Warn("SD token: deleted persisted token", "path", path)
+	}
+}
+
 func saveTokenToDisk(tok string, exp time.Time) {
 	path := tokenFilePath()
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
@@ -118,11 +126,15 @@ func refTimeFromErr(e sdLoginErr) time.Time {
 //   - Enforces a minimum spacing at boot to avoid multiple logins.
 //   - If SD responds with TOO_MANY_LOGINS (4009), set a global pause until next UTC midnight +5m.
 func getSDToken() (string, error) {
+	return getSDTokenWithOptions(false)
+}
+
+func getSDTokenWithOptions(skipDiskLoad bool) (string, error) {
 	// Initial lazy load from disk
 	sdTokenMu.RLock()
 	tokLoaded := sdToken != ""
 	sdTokenMu.RUnlock()
-	if !tokLoaded {
+	if !tokLoaded && !skipDiskLoad {
 		sdTokenMu.Lock()
 		if sdToken == "" {
 			loadTokenFromDisk()
@@ -222,7 +234,8 @@ func forceRefreshToken() (string, error) {
 	sdToken = ""
 	sdTokenExpiry = time.Time{}
 	sdTokenMu.Unlock()
-	return getSDToken()
+	deleteTokenFromDisk()
+	return getSDTokenWithOptions(true)
 }
 
 // forceRefreshTokenLimited enforces a cooldown between forced refreshes to prevent
