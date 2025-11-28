@@ -92,12 +92,13 @@ func fetchAndCacheSDImage(programID, imageID, filePath string) *imageFetchError 
 
 		if resp.StatusCode == http.StatusUnauthorized && attempts == 0 {
 			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
-			if token2, err2 := forceRefreshToken(); err2 == nil {
+			if token2, refreshErr := forceRefreshToken(); refreshErr == nil {
 				imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
 				attempts++
 				continue
+			} else {
+				logger.Error("Proxy: token refresh failed", "programID", programID, "error", refreshErr)
 			}
-			logger.Error("Proxy: token refresh failed", "programID", programID, "error", err2)
 			return &imageFetchError{status: http.StatusBadGateway, message: "token refresh failed"}
 		}
 
