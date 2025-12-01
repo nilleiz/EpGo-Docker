@@ -68,6 +68,15 @@ docker compose up -d
 
 ---
 
+## ✨ NEW in v1.3.3
+
+### Resilient Schedules Direct tokens
+- Image downloads now parse SD `403 INVALID_USER`/`4003` responses and bypass the normal cooldown to refresh tokens immediately after an IP or session change, preventing stalled proxies.
+- Forced refreshes clear the persisted token file and reuse the latest token when a cooldown suppresses a new login, reducing repeated failures without spamming Schedules Direct.
+- The proxy’s unauthorized retry path refreshes tokens once and validates responses before caching, keeping downloads stable even when SD briefly rejects requests.
+
+---
+
 ## ✨ NEW in v1.3.2
 
 ### Optional SD poster preindexing

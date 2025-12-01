@@ -1,13 +1,15 @@
-# Release Notes — 1.3.3-RC
+# Release Notes — 1.3.3
 
 ## Highlights
-- TMDb fallback now supports both v3 API keys and v4 bearer tokens, caches missing-poster lookups, and reuses an in-memory cache to reduce repeated disk reads.
-- SD poster preindexing can be disabled with the new `Preindex SD Posters` option for faster refreshes on large caches; the proxy will build the mapping lazily at runtime instead.
-- Proxy robustness improvements: non-SD image IDs are rejected, cached metadata is loaded even after a failed refresh, resolved art can still be served during upstream pauses, and SD tokens are only requested when a download is required.
+- Hardened Schedules Direct authentication: tokens are refreshed immediately on `403 INVALID_USER`/`4003` responses (e.g., after an IP or session change), even if a cooldown is active, so downloads recover without manual intervention.
+- Forced token refreshes now clear the persisted token file and return the latest usable token when a refresh is suppressed by cooldown logic, reducing login storms while still unblocking subsequent requests.
+- TMDb fallback continues to support both v3 API keys and v4 bearer tokens, caching missing-poster lookups and reusing an in-memory cache to cut redundant disk reads.
+- SD poster preindexing remains optional via `Preindex SD Posters`; disable it to shorten refreshes on large caches and let the proxy build the index lazily at runtime.
 
 ## Bugfixes
-- TMDb lookups no longer fail with unexpected EOF when using v3 keys, and negative results are memoised to avoid repeatedly hammering TMDb when no poster exists.
-- The SD proxy avoids caching or serving non-SD image IDs and can continue serving already-cached resolved posters during global download blocks.
+- Image fetches that hit `403 INVALID_USER` now parse the SD error payload, bypass the cooldown, and retry with a fresh token so proxy downloads no longer fail after an IP/session change.
+- Forced token refreshes delete the on-disk token before logging in again and can reuse the current token when a cooldown suppresses new logins, preventing loops caused by stale or invalid persisted tokens.
+- Fixed the retry flow for unauthorized image downloads so the proxy refreshes the token once, avoids referencing undefined errors, and handles non-image responses consistently.
 
 # Release Notes — 1.3.1
 
