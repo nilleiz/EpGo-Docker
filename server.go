@@ -13,8 +13,163 @@ import (
 	"time"
 )
 
-// ensureProgramMetadata fetches SD metadata for a single ProgramID and stores it in Cache.
-// Returns true if metadata is present afterwards.
+var (
+	imageFetchMu   sync.Mutex
+	imageFetchWait = make(map[string]chan imageFetchOutcome)
+)
+
+type imageFetchError struct {
+	status     int
+	message    string
+	retryAfter time.Duration
+}
+
+type imageFetchOutcome struct {
+	err *imageFetchError
+}
+
+func beginImageFetch(imageID string) (chan imageFetchOutcome, bool) {
+	imageFetchMu.Lock()
+	defer imageFetchMu.Unlock()
+
+	if ch, ok := imageFetchWait[imageID]; ok {
+		return ch, false
+	}
+
+	ch := make(chan imageFetchOutcome, 1)
+	imageFetchWait[imageID] = ch
+	return ch, true
+}
+
+func endImageFetch(imageID string, outcome imageFetchOutcome) {
+	imageFetchMu.Lock()
+	ch, ok := imageFetchWait[imageID]
+	if ok {
+		delete(imageFetchWait, imageID)
+	}
+	imageFetchMu.Unlock()
+
+	if ok {
+		ch <- outcome
+		close(ch)
+	}
+}
+
+func fetchAndCacheSDImage(programID, imageID, filePath string) *imageFetchError {
+	// Token (only when a download is required)
+	token, err := getSDToken()
+	if err != nil {
+		logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
+		return &imageFetchError{status: http.StatusBadGateway, message: "token error"}
+	}
+
+	// IMPORTANT: do NOT redeclare imageID; reuse existing variable to avoid shadowing
+	imageURL := fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
+
+	logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
+
+	client := &http.Client{Timeout: 20 * time.Second}
+	fetch := func(url string) (*http.Response, error) {
+		req, _ := http.NewRequest("GET", url, nil)
+		req.Header.Set("User-Agent", userAgent())
+		return client.Do(req)
+	}
+
+	attempts := 0
+	for {
+		resp, err := fetch(imageURL)
+		if err != nil {
+			logger.Error("Proxy: fetch failed", "programID", programID, "imageID", imageID, "error", err)
+			return &imageFetchError{status: http.StatusBadGateway, message: "fetch failed"}
+		}
+
+		body, rerr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if rerr != nil {
+			logger.Error("Proxy: read body failed", "programID", programID, "imageID", imageID, "error", rerr)
+			return &imageFetchError{status: http.StatusBadGateway, message: "read failed"}
+		}
+
+		if resp.StatusCode == http.StatusUnauthorized && attempts == 0 {
+			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
+			if token2, refreshErr := forceRefreshToken(); refreshErr == nil {
+				imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
+				attempts++
+				continue
+			} else {
+				logger.Error("Proxy: token refresh failed", "programID", programID, "error", refreshErr)
+			}
+			return &imageFetchError{status: http.StatusBadGateway, message: "token refresh failed"}
+		}
+
+		if resp.StatusCode == http.StatusForbidden && attempts == 0 {
+			if errPayload, ok := parseSDLoginErr(body); ok && (strings.EqualFold(errPayload.Response, "INVALID_USER") || errPayload.Code == 4003) {
+				logger.Warn("Proxy: SD token invalidated (403 INVALID_USER), forcing refresh", "programID", programID, "server_time", errPayload.ServerTime)
+				token2, attempted, err2 := forceRefreshTokenLimited(true)
+				if err2 != nil {
+					logger.Error("Proxy: forced token refresh failed", "programID", programID, "error", err2)
+					return &imageFetchError{status: http.StatusBadGateway, message: "token refresh failed"}
+				}
+				if attempted {
+					imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
+					attempts++
+					continue
+				}
+			}
+		}
+
+		// Non-200 -> do not save
+		if resp.StatusCode != http.StatusOK {
+			logger.Warn("Proxy: SD returned non-200", "programID", programID, "imageID", imageID, "status", resp.Status, "body", truncate(string(body), 256))
+			return &imageFetchError{status: resp.StatusCode, message: resp.Status}
+		}
+
+		// Validate payload is an image; SD can return JSON with 200 OK.
+		ct := resp.Header.Get("Content-Type")
+		if ct == "" {
+			ct = http.DetectContentType(body)
+		}
+		isImage := strings.HasPrefix(strings.ToLower(ct), "image/") && looksLikeImage(body)
+		if !isImage {
+			// If body contains quota message, pause globally until next UTC midnight + 5 minutes.
+			bodyText := string(body)
+			if strings.Contains(bodyText, "Counter resets at 00:00Z.") {
+				ref := sdErrorTime(body)
+				if ref.IsZero() {
+					ref = time.Now().UTC()
+				}
+				until := nextUTCMidnightPlus(ref, 5)
+				setGlobalPauseUntil(until, "SD quota message: Counter resets at 00:00Z.")
+				retryAfter := time.Until(until)
+
+				logger.Warn("Proxy: SD returned quota message; pausing all image downloads",
+					"programID", programID, "imageID", imageID,
+					"retry_after", retryAfter.String(), "until_utc", until, "body", truncate(bodyText, 256))
+
+				return &imageFetchError{
+					status:     http.StatusTooManyRequests,
+					message:    "image downloads paused until next UTC midnight window",
+					retryAfter: retryAfter,
+				}
+			}
+
+			// Generic non-image payload — do not save; return 502
+			logger.Warn("Proxy: SD returned non-image payload; not caching",
+				"programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(bodyText, 256))
+			return &imageFetchError{status: http.StatusBadGateway, message: "Schedules Direct returned a non-image payload"}
+		}
+
+		// Save to disk
+		if err := os.WriteFile(filePath, body, 0644); err != nil {
+			logger.Error("Proxy: save failed (write)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
+			return &imageFetchError{status: http.StatusInternalServerError, message: "save failed"}
+		}
+		logger.Info("Proxy: saved image", "programID", programID, "imageID", imageID, "path", filePath)
+
+		return nil
+	}
+}
+
 func ensureProgramMetadata(programID string) bool {
 	if _, ok := Cache.Metadata[programID]; ok {
 		return true
@@ -593,109 +748,34 @@ func StartServer(dir string, port string) {
 			}
 		}
 
-		// Token (only when a download is required)
-		token, err := getSDToken()
-		if err != nil {
-			logger.Error("Proxy: token error before fetch", "programID", programID, "error", err)
-			http.Error(w, "token error", http.StatusBadGateway)
-			return
-		}
-
-		// IMPORTANT: do NOT redeclare imageID; reuse existing variable to avoid shadowing
-		var imageURL string
-		imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token)
-
-		// 4) Download (retry once on 401)
-		logger.Info("Proxy: downloading image from SD", "programID", programID, "imageID", imageID, "url", imageURL)
-
-		client := &http.Client{Timeout: 20 * time.Second}
-		fetch := func(url string) (*http.Response, error) {
-			req, _ := http.NewRequest("GET", url, nil)
-			req.Header.Set("User-Agent", userAgent())
-			return client.Do(req)
-		}
-
-		resp, err := fetch(imageURL)
-		if err != nil {
-			logger.Error("Proxy: fetch failed", "programID", programID, "imageID", imageID, "error", err)
-			http.Error(w, "fetch failed", http.StatusBadGateway)
-			return
-		}
-		if resp.StatusCode == http.StatusUnauthorized {
-			logger.Warn("Proxy: SD token unauthorized, refreshing", "programID", programID)
-			resp.Body.Close()
-			if token2, err2 := forceRefreshToken(); err2 == nil {
-				imageURL = fmt.Sprintf("https://json.schedulesdirect.org/20141201/image/%s.jpg?token=%s", imageID, token2)
-				resp, err = fetch(imageURL)
-				if err != nil {
-					logger.Error("Proxy: fetch retry failed", "programID", programID, "imageID", imageID, "error", err)
-					http.Error(w, "fetch retry failed", http.StatusBadGateway)
-					return
+		resultCh, isLeader := beginImageFetch(imageID)
+		if !isLeader {
+			outcome := <-resultCh
+			if outcome.err != nil {
+				if outcome.err.retryAfter > 0 {
+					w.Header().Set("Retry-After", fmt.Sprintf("%.0f", outcome.err.retryAfter.Seconds()))
 				}
+				http.Error(w, outcome.err.message, outcome.err.status)
+				return
+			}
+		} else {
+			// Leader performs the download, then notifies any waiters.
+			var fetchErr *imageFetchError
+			if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+				fetchErr = nil
 			} else {
-				logger.Error("Proxy: token refresh failed", "programID", programID, "error", err2)
-				http.Error(w, "token refresh failed", http.StatusBadGateway)
-				return
+				fetchErr = fetchAndCacheSDImage(programID, imageID, filePath)
 			}
-		}
-		defer resp.Body.Close()
+			endImageFetch(imageID, imageFetchOutcome{err: fetchErr})
 
-		// Read entire body for validation
-		buf, rerr := io.ReadAll(resp.Body)
-		if rerr != nil {
-			logger.Error("Proxy: read body failed", "programID", programID, "imageID", imageID, "error", rerr)
-			http.Error(w, "read failed", http.StatusBadGateway)
-			return
-		}
-
-		// Non-200 -> do not save
-		if resp.StatusCode != http.StatusOK {
-			logger.Warn("Proxy: SD returned non-200", "programID", programID, "imageID", imageID, "status", resp.Status, "body", truncate(string(buf), 256))
-			http.Error(w, resp.Status, resp.StatusCode)
-			return
-		}
-
-		// Validate payload is an image; SD can return JSON with 200 OK.
-		ct := resp.Header.Get("Content-Type")
-		if ct == "" {
-			ct = http.DetectContentType(buf)
-		}
-		isImage := strings.HasPrefix(strings.ToLower(ct), "image/") && looksLikeImage(buf)
-		if !isImage {
-			// If body contains quota message, pause globally until next UTC midnight + 5 minutes.
-			bodyText := string(buf)
-			if strings.Contains(bodyText, "Counter resets at 00:00Z.") {
-				ref := sdErrorTime(buf)
-				if ref.IsZero() {
-					ref = time.Now().UTC()
+			if fetchErr != nil {
+				if fetchErr.retryAfter > 0 {
+					w.Header().Set("Retry-After", fmt.Sprintf("%.0f", fetchErr.retryAfter.Seconds()))
 				}
-				until := nextUTCMidnightPlus(ref, 5)
-				setGlobalPauseUntil(until, "SD quota message: Counter resets at 00:00Z.")
-				retryAfter := time.Until(until)
-
-				logger.Warn("Proxy: SD returned quota message; pausing all image downloads",
-					"programID", programID, "imageID", imageID,
-					"retry_after", retryAfter.String(), "until_utc", until, "body", truncate(bodyText, 256))
-
-				w.Header().Set("Retry-After", fmt.Sprintf("%.0f", retryAfter.Seconds()))
-				http.Error(w, "image downloads paused until next UTC midnight window", http.StatusTooManyRequests)
+				http.Error(w, fetchErr.message, fetchErr.status)
 				return
 			}
-
-			// Generic non-image payload — do not save; return 502
-			logger.Warn("Proxy: SD returned non-image payload; not caching",
-				"programID", programID, "imageID", imageID, "content_type", ct, "body", truncate(bodyText, 256))
-			http.Error(w, "Schedules Direct returned a non-image payload", http.StatusBadGateway)
-			return
 		}
-
-		// Save to disk
-		if err := os.WriteFile(filePath, buf, 0644); err != nil {
-			logger.Error("Proxy: save failed (write)", "programID", programID, "imageID", imageID, "path", filePath, "error", err)
-			http.Error(w, "save failed", http.StatusInternalServerError)
-			return
-		}
-		logger.Info("Proxy: saved image", "programID", programID, "imageID", imageID, "path", filePath)
 
 		// Update index and serve (log with category if possible)
 		_ = indexSet(programID, imageID)

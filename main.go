@@ -10,10 +10,10 @@ import (
 
 // Names (base = your fork, non-base = upstream)
 const (
-	AppName     = "EPGo-Docker" // your Docker fork
-	Version     = "v1.3.2"
-	BaseName    = "EPGo" // upstream app
-	BaseVersion = "v3.2.1"
+        AppName     = "EPGo-Docker" // your Docker fork
+        Version     = "v1.3.3"
+        BaseName    = "EPGo" // upstream app
+        BaseVersion = "v3.2.1"
 )
 
 // Config : Config file (struct)
