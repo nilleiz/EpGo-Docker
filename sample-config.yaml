@@ -10,7 +10,7 @@ Files:
     # Example: The Simpsons,199655_i
 Server:
   Enable: true                 # enable the built-in HTTP server
-  Address: 0.0.0.0 / localhost
+  Address: x.x.x.x / localhost
   Port: "8765"
 
 Options:
