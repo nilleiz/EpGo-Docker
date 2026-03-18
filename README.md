@@ -68,6 +68,24 @@ docker compose up -d
 
 ---
 
+## 🤖 Automated Docker Hub publishing
+
+This repository now includes a GitHub Actions workflow that publishes the Docker image automatically when code is pushed to one of the release branches:
+
+- `develop` → pushes `nillivanilli0815/epgo:develop`
+- `master` → pushes `nillivanilli0815/epgo:latest`
+
+### One-time manual setup
+
+Before the workflow can push images, add these **GitHub repository secrets** in **Settings → Secrets and variables → Actions**:
+
+- `DOCKERHUB_USERNAME`: your Docker Hub username
+- `DOCKERHUB_TOKEN`: a Docker Hub access token with permission to push to `nillivanilli0815/epgo`
+
+After those secrets are configured, no additional manual steps are needed inside the repo. Merging into `develop` or `master` will trigger the publish workflow automatically.
+
+---
+
 ## ✨ NEW in v1.3.3
 
 ### Resilient Schedules Direct tokens
