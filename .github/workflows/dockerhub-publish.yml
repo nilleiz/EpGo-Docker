@@ -3,7 +3,7 @@ name: Build and publish Docker image
 on:
   push:
     branches:
-      - develop
+      - dev
       - master
 
 jobs:
@@ -22,9 +22,9 @@ jobs:
         shell: bash
         run: |
           case "${GITHUB_REF_NAME}" in
-            develop)
-              echo "image_tag=develop" >> "$GITHUB_OUTPUT"
-              echo "source_ref=develop" >> "$GITHUB_OUTPUT"
+            dev)
+              echo "image_tag=dev" >> "$GITHUB_OUTPUT"
+              echo "source_ref=dev" >> "$GITHUB_OUTPUT"
               ;;
             master)
               echo "image_tag=latest" >> "$GITHUB_OUTPUT"
