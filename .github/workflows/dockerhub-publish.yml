@@ -1,0 +1,46 @@
+name: Build and publish Docker image
+
+on:
+  push:
+    branches:
+      - dev
+      - master
+
+jobs:
+  publish:
+    name: Publish Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve publish settings
+        id: publish
+        shell: bash
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            dev)
+              echo "image_tag=dev" >> "$GITHUB_OUTPUT"
+              echo "source_ref=dev" >> "$GITHUB_OUTPUT"
+              ;;
+            master)
+              echo "image_tag=latest" >> "$GITHUB_OUTPUT"
+              echo "source_ref=master" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported branch: ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Build and push to Docker Hub
+        uses: ./.github/actions/dockerhub-publish
+        with:
+          image_name: nillivanilli0815/epgo
+          dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+          source_ref: ${{ steps.publish.outputs.source_ref }}
+          image_tag: ${{ steps.publish.outputs.image_tag }}
