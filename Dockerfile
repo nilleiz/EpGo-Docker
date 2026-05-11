@@ -4,15 +4,11 @@ FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache ca-certificates
 WORKDIR /src
 
-# Build args so you can choose branch/tag/commit at build time
-ARG REPO=https://github.com/nilleiz/EpGo-Docker.git
-ARG REF=master
-
-# Clone the repo at the requested ref (branch/tag/commit), shallow for speed
-RUN git clone --depth 1 --branch "${REF}" "${REPO}" .
+# Build from the local Docker build context (the checked-out branch/commit).
+COPY . /src
 
 # --- Build mandatory 'nextrun' helper ---
 # Fail fast if nextrun source is missing
