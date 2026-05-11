@@ -27,6 +27,18 @@ func TestOrderedChannelDisplayNames(t *testing.T) {
 			callsign: "EUROSGR",
 			want:     []string{"EUROSGR"},
 		},
+		{
+			name:     "trimmed station name stays first",
+			station:  "  Das Erste HD  ",
+			callsign: "ARDH",
+			want:     []string{"Das Erste HD", "ARDH"},
+		},
+		{
+			name:     "avoid duplicate values case insensitive",
+			station:  "Eurosport 1",
+			callsign: "eurosport 1",
+			want:     []string{"Eurosport 1"},
+		},
 	}
 
 	for _, tt := range tests {
