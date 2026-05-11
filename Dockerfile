@@ -13,15 +13,13 @@ COPY . /src
 # --- Build mandatory 'nextrun' helper ---
 # Fail fast if nextrun source is missing
 RUN test -f tools/nextrun/main.go
-RUN mkdir /build-helper
-RUN cp tools/nextrun/main.go /build-helper/nextrun.go
-WORKDIR /build-helper
-RUN go mod init nextrun && go get github.com/robfig/cron/v3
-RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 go build -o /nextrun nextrun.go
+WORKDIR /src/tools/nextrun
+RUN go mod download
+RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 go build -o /nextrun .
 
 # --- Build the main 'epgo' application ---
 WORKDIR /src
-RUN go mod tidy
+RUN go mod download
 RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /epgo .
 
 # ---------- Stage 2: Final ----------
