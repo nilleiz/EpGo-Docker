@@ -3,7 +3,7 @@ name: Development Release
 on:
   push:
     branches:
-      - "development"
+      - "feature*"
 
 jobs:
   build:
