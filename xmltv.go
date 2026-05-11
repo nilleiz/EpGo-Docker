@@ -12,10 +12,20 @@ import (
 	"time"
 )
 
-func configuredStationName(stationID string) string {
+const schedulesDirectSuffix = ".schedulesdirect.org"
+
+func normalizeStationID(stationID string) string {
 	id := strings.TrimSpace(stationID)
+	id = strings.Trim(id, "\"")
+	id = strings.TrimSpace(id)
+	id = strings.TrimSuffix(id, schedulesDirectSuffix)
+	return id
+}
+
+func configuredStationName(stationID string) string {
+	id := normalizeStationID(stationID)
 	for _, st := range Config.Station {
-		if strings.TrimSpace(st.ID) == id {
+		if normalizeStationID(st.ID) == id {
 			if name := strings.TrimSpace(st.Name); name != "" {
 				return name
 			}
@@ -36,6 +46,18 @@ func orderedChannelDisplayNames(stationName, callsign string) []DisplayName {
 		names = append(names, DisplayName{Value: cs})
 	}
 	return names
+}
+
+func buildXMLChannel(cache EPGoCache) channel {
+	var xmlCha channel // defined in struct_config.go
+	xmlCha.ID = fmt.Sprintf("%s.schedulesdirect.org", normalizeStationID(cache.StationID))
+	xmlCha.Icon = cache.getLogo()
+	stationName := configuredStationName(cache.StationID)
+	if stationName == "" {
+		stationName = cache.Name
+	}
+	xmlCha.DisplayName = append(xmlCha.DisplayName, orderedChannelDisplayNames(stationName, cache.Callsign)...)
+	return xmlCha
 }
 
 // CreateXMLTV : Create XMLTV file from cache file
@@ -89,14 +111,7 @@ func CreateXMLTV(filename string) (err error) {
 
 	// Channels
 	for _, cache := range Cache.Channel {
-		var xmlCha channel // defined in struct_config.go
-		xmlCha.ID = fmt.Sprintf("%s.schedulesdirect.org", cache.StationID)
-		xmlCha.Icon = cache.getLogo()
-		stationName := configuredStationName(cache.StationID)
-		if stationName == "" {
-			stationName = cache.Name
-		}
-		xmlCha.DisplayName = append(xmlCha.DisplayName, orderedChannelDisplayNames(stationName, cache.Callsign)...)
+		xmlCha := buildXMLChannel(cache)
 		he(enc.Encode(xmlCha))
 	}
 
