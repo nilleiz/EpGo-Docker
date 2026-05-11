@@ -12,6 +12,36 @@ import (
 	"time"
 )
 
+func configuredStationName(stationID string) string {
+	for _, st := range Config.Station {
+		if st.ID == stationID && strings.TrimSpace(st.Name) != "" {
+			return st.Name
+		}
+	}
+	return ""
+}
+
+func buildXMLTVDisplayName(stationName, callsign, stationID string) string {
+	name := strings.TrimSpace(stationName)
+	if name == "" {
+		name = strings.TrimSpace(callsign)
+	}
+
+	parts := make([]string, 0, 2)
+	if cs := strings.TrimSpace(callsign); cs != "" {
+		parts = append(parts, cs)
+	}
+	if sid := strings.TrimSpace(stationID); sid != "" {
+		parts = append(parts, sid)
+	}
+
+	if len(parts) == 0 {
+		return name
+	}
+
+	return fmt.Sprintf("%s (%s)", name, strings.Join(parts, ","))
+}
+
 // CreateXMLTV : Create XMLTV file from cache file
 func CreateXMLTV(filename string) (err error) {
 	defer func() { runtime.GC() }()
@@ -66,8 +96,13 @@ func CreateXMLTV(filename string) (err error) {
 		var xmlCha channel // defined in struct_config.go
 		xmlCha.ID = fmt.Sprintf("%s.schedulesdirect.org", cache.StationID)
 		xmlCha.Icon = cache.getLogo()
+		stationName := configuredStationName(cache.StationID)
+		if stationName == "" {
+			stationName = cache.Name
+		}
+		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: buildXMLTVDisplayName(stationName, cache.Callsign, cache.StationID)})
 		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Callsign})
-		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: cache.Name})
+		xmlCha.DisplayName = append(xmlCha.DisplayName, DisplayName{Value: stationName})
 		he(enc.Encode(xmlCha))
 	}
 
