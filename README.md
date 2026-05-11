@@ -68,6 +68,26 @@ docker compose up -d
 
 ---
 
+## ✨ NEW in v1.3.4-RC
+
+### XMLTV channel display-name ordering
+EPGo now emits your configured station `Name` as the **first** XMLTV `<display-name>` for each channel. Many XMLTV clients prefer the first `<display-name>` as the primary channel label, so this keeps channel naming consistent with your config.
+
+Source/schedules callsigns are still included, but now appear **after** the configured clear station name.
+
+- Channel IDs are unchanged (`<channel id=...>` remains the same).
+- Programme `channel` references are unchanged.
+
+Example:
+
+```xml
+<channel id="90447.schedulesdirect.org">
+  <display-name>Das Erste HD</display-name>
+  <display-name>ARDGRHD</display-name>
+  ...
+</channel>
+```
+
 ## ✨ NEW in v1.3.3
 
 ### Resilient Schedules Direct tokens
