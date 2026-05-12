@@ -3,7 +3,7 @@
 #
 # Usage examples:
 #   ./build.sh                                # prompts for REF and tag values, loads native arch locally
-#   ./build.sh -r v1.3-RC -t dev              # passes REF and tag via flags
+#   ./build.sh -r v1.3.4 -t dev              # passes REF and tag via flags
 #   ./build.sh --ref main --tag qa --push     # build and push multi-arch (amd64/arm64)
 #   ./build.sh -r main -t qa --push --latest  # also push the "latest" tag
 #   ./build.sh -r main -t qa --push --develop # also push the "develop" tag
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$REF" ]]; then
-  read -r -p "Enter REF build argument (e.g., v1.3-RC): " REF
+  read -r -p "Enter REF build argument (e.g., v1.3.4): " REF
 fi
 
 if [[ -z "$TAG" ]]; then

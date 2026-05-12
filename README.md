@@ -68,7 +68,7 @@ docker compose up -d
 
 ---
 
-## ✨ NEW in v1.3.4-RC
+## ✨ NEW in v1.3.4
 
 ### XMLTV channel display-name ordering
 EPGo now emits your configured station `Name` as the **first** XMLTV `<display-name>` for each channel. Many XMLTV clients prefer the first `<display-name>` as the primary channel label, so this keeps channel naming consistent with your config.
