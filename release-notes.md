@@ -1,4 +1,4 @@
-# Release Notes — 1.3.4-RC
+# Release Notes — 1.3.4
 
 ## Highlights
 - Fixed XMLTV channel display-name ordering so configured clear station names are emitted first, followed by source/Schedules Direct callsigns.
