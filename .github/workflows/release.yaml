@@ -2,6 +2,8 @@ name: Release Go Project
 
 on:
   push:
+    branches:
+      - master
     tags:
       - "v*"
 
@@ -57,9 +59,12 @@ jobs:
           name: epgo-${{ matrix.os_arch.goos }}-${{ matrix.os_arch.goarch }}
           path: ${{ env.archive_name }}
 
-  create_release: # Renamed job for clarity and dependency
-    needs: build # Make sure build job completes first
+  create_release:
+    needs: build
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.resolve_tag.outputs.release_tag }}
+      version_tag: ${{ steps.resolve_tag.outputs.version_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -69,18 +74,33 @@ jobs:
         with:
           path: epgo-builds
 
+      - name: Resolve release tag
+        id: resolve_tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG=$(sed -n 's/.*Version *= *"\(v[^"]*\)".*/\1/p' main.go | head -n1)
+            if [[ -z "$TAG" ]]; then
+              echo "Unable to determine Version from main.go" >&2
+              exit 1
+            fi
+          fi
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version_tag=${TAG#v}" >> "$GITHUB_OUTPUT"
+
       - name: Check for existing release
         id: check_release
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = '${{ steps.resolve_tag.outputs.release_tag }}';
             try {
               await github.rest.repos.getReleaseByTag({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                tag: tag,
+                tag,
               });
               core.setOutput('exists', true);
             } catch (error) {
@@ -91,7 +111,46 @@ jobs:
         if: steps.check_release.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.resolve_tag.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           files: |
             epgo-builds/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    name: Build and Push Docker Image
+    needs: create_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: nillivanilli0815/epgo
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.create_release.outputs.version_tag }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
