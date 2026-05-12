@@ -4,7 +4,7 @@ build.ps1 - Build the EpGo Docker image (multi-arch aware).
 
 Usage examples:
   ./build.ps1                              # prompts for REF and tag values, loads native arch locally
-  ./build.ps1 -Ref v1.3-RC -Tag dev        # passes REF and tag via parameters
+  ./build.ps1 -Ref v1.3.4 -Tag dev        # passes REF and tag via parameters
   ./build.ps1 -Ref main -Tag qa -Push      # build and push multi-arch (amd64/arm64)
   ./build.ps1 -Ref main -Tag qa -Push -LatestTag   # also push the "latest" tag
   ./build.ps1 -Ref main -Tag qa -Push -DevelopTag  # also push the "develop" tag
@@ -30,7 +30,7 @@ $Platforms = "linux/amd64,linux/arm64"
 $BuilderName = "epgo-builder"
 
 if (-not $Ref) {
-  $Ref = Read-Host "Enter REF build argument (e.g., v1.3-RC)"
+  $Ref = Read-Host "Enter REF build argument (e.g., v1.3.4)"
 }
 
 if (-not $Tag) {

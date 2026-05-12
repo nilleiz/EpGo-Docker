@@ -1,3 +1,14 @@
+# Release Notes — 1.3.4
+
+## Highlights
+- Fixed XMLTV channel display-name ordering so configured clear station names are emitted first, followed by source/Schedules Direct callsigns.
+- Channel IDs and programme channel references remain unchanged; only display-name ordering was adjusted for client-friendly naming.
+- Docker builds use the local build context (checked-out source) instead of cloning `master` during image builds.
+- The `nextrun` helper continues to be built separately from `tools/nextrun/main.go`.
+
+## Bugfixes
+- XMLTV clients that prioritize the first `<display-name>` now receive the configured station `Name` first, preventing source callsigns from overriding intended labels.
+
 # Release Notes — 1.3.3
 
 ## Highlights
